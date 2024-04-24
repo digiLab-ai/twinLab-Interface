@@ -1,0 +1,25 @@
+columns:
+- - Number of packs sold
+  - '0'
+- - Number of packs sold
+  - '1'
+- - Number of packs sold
+  - '2'
+- - Number of packs sold
+  - '3'
+- - Number of packs sold
+  - '4'
+- - Profit [GBP]
+  - '0'
+- - Profit [GBP]
+  - '1'
+- - Profit [GBP]
+  - '2'
+- - Profit [GBP]
+  - '3'
+- - Profit [GBP]
+  - '4'
+indices:
+- 0
+- 1
+- 2

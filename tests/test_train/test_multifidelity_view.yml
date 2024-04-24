@@ -1,0 +1,27 @@
+dataset_id: biscuits-multifidelity
+decompose_inputs: false
+decompose_outputs: false
+estimator: gaussian_process_regression
+estimator_kwargs:
+  detrend: false
+  device: cpu
+  estimator_type: multi_fidelity_gp
+fidelity: fidelity
+inputs:
+- Pack price [GBP]
+- Number of biscuits per pack
+model_id: biscuits-multifidelity
+model_selection: false
+model_selection_kwargs:
+  base_kernels: restricted
+  depth: 1
+  evaluation_metric: MSLL
+  resource_per_trail:
+    cpu: 1
+    gpu: 0
+  val_ratio: 0.2
+outputs:
+- Number of packs sold
+- Profit [GBP]
+seed: 123
+train_test_ratio: 0.8

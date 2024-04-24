@@ -1,0 +1,58 @@
+[tool.poetry]
+name = "twinlab"
+version = "2.6.0"
+description = "twinLab - Probabilistic Machine Learning for Engineers"
+license = "MIT"
+homepage = "https://twinlab.ai"
+documentation = "https://twinlab.ai"
+authors = ["digiLab Solutions Ltd. <info@digilab.co.uk>"]
+maintainers = [
+    "Alexander Mead <alexander@digilab.co.uk>",
+    "Freddy Wordingham <freddy@digilab.co.uk>",
+    "Michelle Fabienne Bieger <michelle@digilab.co.uk>",
+    "Huy Nguyen <huy@digilab.co.uk>",
+    "Joe Schaefer <joe@digiLab.co.uk>",
+    "Jodeci Pugsley <jodeci@digilab.co.uk>",
+    "Sai Aakash Ramesh<sai-aakash@digilab.co.uk>",
+    "Sergio Chavez <sergio@digilab.co.uk>",
+    "Micol Greta Giannelli <micol@digilab.co.uk>",
+    "Jasper Cantwell <jasper@digilab.co.uk>",
+    "Will Denby <will@digilab.co.uk>",
+]
+keywords = ["machine-learning", "AI", "cloud", "twinLab", "digiLab"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.13"
+matplotlib = ">=3.7"
+numpy = [
+    { version = "^1.24", python = ">=3.8,<3.9" },
+    { version = "^1.26", python = ">=3.9,<3.13" },
+]
+pandas = [
+    { version = "^1.5.3", python = ">=3.8,<3.9" },
+    { version = "^2.0", python = ">=3.9,<3.13" },
+]
+python-dotenv = "^1.0.0"
+requests = "^2.28.2"
+typeguard = "^4.0.0"
+setuptools = "^69.0.2"
+deprecated = "^1.2.14"
+
+[tool.poetry.dev-dependencies]
+ipykernel = "^6.22.0"
+IPython = "^8.11"
+pytest = "^7.1.2"
+pytest-timeout = "^2.3.1"
+pytest-cov = "^3.0.0"
+pytest-regtest = "^1.5.1"
+pytest-regressions = "^2.5.0"
+
+# NOTE: This allows for better collection of the pytests
+# NOTE: Allows tests that have the same name but in different folders
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

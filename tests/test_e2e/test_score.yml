@@ -1,0 +1,5 @@
+columns:
+- Number of packs sold
+- Profit [GBP]
+indices:
+- 0
