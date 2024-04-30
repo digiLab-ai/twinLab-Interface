@@ -1,4 +1,3 @@
-import json
 import time
 
 import pandas as pd
@@ -6,39 +5,33 @@ import pytest
 import twinlab.api as api
 import twinlab.utils as utils
 
-dataset_id = "api-test"
-model_id = "api-test"
-
 
 @pytest.fixture
 def upload_setup():
     df = pd.DataFrame({"X": [1, 2, 3], "y": [4, 5, 6]})
-    api.upload_dataset(dataset_id, df.to_csv(index=False))
+    api.upload_dataset("test_dataset", df.to_csv(index=False))
 
 
 @pytest.fixture
 def upload_with_url_setup():
     df = pd.DataFrame({"X": [1, 2, 3], "y": [4, 5, 6]})
-    _, url = api.generate_upload_url(dataset_id)
+    _, url = api.generate_upload_url("test_dataset")
     utils.upload_dataframe_to_presigned_url(df, url["url"])
 
 
 @pytest.fixture
 def training_setup(upload_setup):
     # NOTE: upload_setup is a necessary argument, even though not used, in order to run the fixture
-    params = {
-        "dataset_id": dataset_id,
-        "inputs": ["X"],
-        "outputs": ["y"],
-        "train_test_ratio": 0.8,
-    }
-    params = json.dumps(params)
-    status, body = api.train_request_model(model_id, params, "cpu")
+    status, body = api.train_request_model(
+        "test_model",
+        '{"dataset_id": "test_dataset", "inputs": ["X"], "outputs": ["y"], "train_test_ratio": 0.8}',
+        "cpu",
+    )
     process_id = body["process_id"]
-    status, _ = api.train_response_model(model_id, process_id)
+    status, _ = api.train_response_model("test_model", process_id)
     while status == 202:  # Wait for the model to finish training
         time.sleep(1)
-        status, _ = api.train_response_model(model_id, process_id)
+        status, _ = api.train_response_model("test_model", process_id)
 
 
 @pytest.fixture
@@ -63,7 +56,7 @@ def inverse_std_csv():
 def predict_request(training_setup, data_csv):
     # NOTE: training_setup is a necessary argument, even though not used, in order to run the fixture
     _, body = api.use_request_model(
-        model_id=model_id,
+        model_id="test_model",
         method="predict",
         data_csv=data_csv,
     )
@@ -74,7 +67,7 @@ def predict_request(training_setup, data_csv):
 def sample_request(training_setup, data_csv):
     # NOTE: training_setup is a necessary argument, even though not used, in order to run the fixture
     _, body = api.use_request_model(
-        model_id=model_id,
+        model_id="test_model",
         method="sample",
         data_csv=data_csv,
         num_samples=3,
@@ -87,7 +80,7 @@ def sample_request(training_setup, data_csv):
 def get_candidate_points_request(training_setup):
     # NOTE: training_setup is a necessary argument, even though not used, in order to run the fixture
     _, body = api.use_request_model(
-        model_id=model_id,
+        model_id="test_model",
         method="get_candidate_points",
         acq_func="qNIPV",
         num_points=1,
@@ -100,7 +93,7 @@ def get_candidate_points_request(training_setup):
 def solve_inverse_request(training_setup, inverse_csv, inverse_std_csv):
     # NOTE: training_setup is a necessary argument, even though not used, in order to run the fixture
     _, body = api.use_request_model(
-        model_id=model_id,
+        model_id="test_model",
         method="solve_inverse",
         data_csv=inverse_csv,
         data_std_csv=inverse_std_csv,
@@ -115,5 +108,5 @@ def solve_inverse_request(training_setup, inverse_csv, inverse_std_csv):
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup():
-    api.delete_dataset(dataset_id)
-    api.delete_model(model_id)
+    api.delete_dataset("test_dataset")
+    api.delete_model("test_model")

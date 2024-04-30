@@ -230,36 +230,35 @@ def list_emulators(
     # Get the emulators dictionary from the response
     _, response = api.list_models(verbose=DEBUG)
     emulators = utils.get_value_from_body("model_information", response)
-
-    # Standardise dictionary for failed cases
-    for emulator in emulators:
-        if "run_time" not in emulator:
-            emulator["run_time"] = "NaN"
-        if "start_time" not in emulator:
-            emulator["start_time"] = "NaN"
+    emulator_list = utils.get_value_from_body("models", response)
 
     # Create dictionary of cuddly response
     status_dict = {
         "success": "Successfully trained emulators:",
         "in_progress": "Emulators currently training:",
         "failed": "Emulators that failed to train:",
+        "no_logging": "Emualtors trained prior to logging:",
     }
 
-    # Write out nicely in verbose mode
-    verbose_keys = ("model", "start_time", "run_time")
     if verbose:
-        for status, nice_status in status_dict.items():
-            emus = [emu for emu in emulators if emu["status"] == status]
-            # Sort through dictionary via success, in_progress, failed
-            emus = [dict((key, emu[key]) for key in verbose_keys) for emu in emus]
-            emus = sorted(emus, key=lambda d: d["start_time"])
-            # List models in order from starting time
+
+        for status in status_dict.keys():
+
+            emus = []
+            for i in emulators:
+                if i.get("status") == status:
+                    i.pop("status", None)
+                    emus.append(i)
+
+            if status != "no_logging":
+                emus = sorted(emus, key=lambda d: d["start_time"])
+
             if emus:
-                # Only print list if there are available emulators to list
-                print(nice_status)
+                print(status_dict[status])
                 pprint(emus)
-    # Return a simple list of trained emulators for backwards compatability
-    return [emulator["model"] for emulator in emulators]
+                print("\n")
+
+    return emulator_list
 
 
 @typechecked

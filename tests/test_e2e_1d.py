@@ -9,8 +9,8 @@ import twinlab as tl
 resources_path = os.path.join("..", "..", "resources")
 
 # Parameters for tests
-dataset_id = "quickstart-e2e-test"
-emulator_id = "quickstart-e2e-test"
+dataset_id = "basic"
+emulator_id = "SimpleGP"
 inputs = ["x"]
 outputs = ["y"]
 train_test_ratio = 0.8

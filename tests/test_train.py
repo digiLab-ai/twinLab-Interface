@@ -15,9 +15,6 @@ dataset_path = os.path.join(resources_path, "datasets", "biscuits.csv")
 eval_path = os.path.join(resources_path, "campaigns", "biscuits", "eval.csv")
 
 # Parameters for tests
-dataset_id = "biscuits-train-test"
-dataset_std_id = "biscuits-std-train-test"
-emulator_id = "biscuits-train-test"
 inputs = ["Pack price [GBP]", "Number of biscuits per pack"]
 outputs = ["Number of packs sold", "Profit [GBP]"]
 train_test_ratio = 0.8
@@ -47,12 +44,12 @@ def test_heteroskedastic(data_regression, dataframe_regression):
 
     # Upload training data
     df = tl.load_dataset(dataset_path)
-    dataset = tl.Dataset(id=dataset_id)
+    dataset = tl.Dataset(id="biscuits")
     dataset.upload(df)
 
     # Upload standard deviation data
     # TODO: Using a random-number generator to create test data is a recipe for disaster
-    dataset_std = tl.Dataset(id=dataset_std_id)
+    dataset_std = tl.Dataset(id="biscuits_std")
     df_std = pd.DataFrame(
         {
             "Pack price [GBP]": [random.uniform(1.6, 3) for _ in range(12)],
@@ -71,7 +68,7 @@ def test_heteroskedastic(data_regression, dataframe_regression):
         estimator_params=estimator_params,
         seed=seed,
     )
-    emulator = tl.Emulator(id=emulator_id)
+    emulator = tl.Emulator(id="biscuits-heteroskedastic")
     emulator.train(dataset, inputs, outputs, params=params)
 
     # Test view
@@ -123,7 +120,7 @@ def test_multifidelity(data_regression, dataframe_regression):
     df = tl.load_dataset(dataset_path)
     fidelity = {"fidelity": np.random.uniform(0, 1, len(df))}  # Fidelity column
     df = pd.concat([df, pd.DataFrame(fidelity)], axis="columns")
-    dataset = tl.Dataset(id=dataset_id)
+    dataset = tl.Dataset(id="biscuits-multifidelity")
     dataset.upload(df)
 
     # Create and train emulator
@@ -134,7 +131,7 @@ def test_multifidelity(data_regression, dataframe_regression):
         seed=seed,
         fidelity="fidelity",
     )
-    emulator = tl.Emulator(id=emulator_id)
+    emulator = tl.Emulator(id="biscuits-multifidelity")
     emulator.train(dataset, inputs, outputs, params=params)
 
     # Test view
@@ -172,7 +169,7 @@ def test_model_selection(data_regression, dataframe_regression):
 
     # Upload training data
     df = tl.load_dataset(dataset_path)
-    dataset = tl.Dataset(id=dataset_id)
+    dataset = tl.Dataset(id="biscuits")
     dataset.upload(df)
 
     # Create and train emulator
@@ -182,7 +179,7 @@ def test_model_selection(data_regression, dataframe_regression):
         train_test_ratio=train_test_ratio,
         seed=seed,
     )
-    emulator = tl.Emulator(id=emulator_id)
+    emulator = tl.Emulator(id="biscuits-model-selection")
     emulator.train(dataset, inputs, outputs, params=params)
 
     # Test view
@@ -220,7 +217,7 @@ def test_functional(data_regression, dataframe_regression):
 
     # Upload training data
     df = tl.load_dataset(dataset_path)
-    dataset = tl.Dataset(id=dataset_id)
+    dataset = tl.Dataset(id="biscuits")
     dataset.upload(df)
 
     # Create and train emulator
@@ -232,7 +229,7 @@ def test_functional(data_regression, dataframe_regression):
         output_retained_dimensions=output_retained_dimensions,
         seed=seed,
     )
-    emulator = tl.Emulator(id=emulator_id)
+    emulator = tl.Emulator(id="biscuits-functional")
     emulator.train(dataset, inputs, outputs, params=params)
 
     # Test view
@@ -272,12 +269,12 @@ def test_classic(data_regression, dataframe_regression):
 
     # Upload training data
     df = tl.load_dataset(dataset_path)
-    dataset = tl.Dataset(id=dataset_id)
+    dataset = tl.Dataset(id="biscuits")
     dataset.upload(df)
 
     # Create and train emulator
     params = tl.TrainParams(seed=seed)
-    emulator = tl.Emulator(id=emulator_id)
+    emulator = tl.Emulator(id="biscuits-classic")
     emulator.train(dataset, inputs, outputs, params=params)
 
     # Test view
