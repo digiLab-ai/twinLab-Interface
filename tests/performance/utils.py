@@ -10,7 +10,7 @@ import pandas as pd
 
 def time_function(n, func, **kwargs):
     """
-    Function that returns  a list of times for ten iterations of running a function.
+    Function that returns a list of times for ten iterations of running a function.
     """
     times = []
     for i in range(n):
@@ -60,7 +60,7 @@ def record_results(list_dataframes, recording_directory, name="data.csv"):
     complete_df.to_csv(os.path.join(recording_directory, name))
 
 
-def plot_results(dataframe, recording_directory=None, date=False):
+def plot_results(dataframe, recording_directory=None, date=False, log=False):
     """function that takes a dataframe and plots the results"""
 
     # Initialize the plot
@@ -83,6 +83,8 @@ def plot_results(dataframe, recording_directory=None, date=False):
                     linestyle=":",
                     label=column,
                 )
+                if log:
+                    plt.gca().set_yscale("log")
                 # plt.gca().set_xticklabels(  # Renaming the x-ticks to make it more readable
                 #     [date.split("T")[0][5:] for date in dataframe["time_stamp"]]
                 # )
@@ -104,12 +106,16 @@ def plot_results(dataframe, recording_directory=None, date=False):
     else:
         plt.xlabel("Iteration")
         plt.xticks(range(1, len(dataframe) + 1))
-    plt.ylabel("Time (s)")
+    plt.ylabel("Time [s]")
     plt.ylim(bottom=0)
     plt.title(f"Performance of {dataframe.name}")
     plt.legend(loc="upper left")
     if recording_directory is not None:
-        figure_path = os.path.join(recording_directory, f"{dataframe.name}_plot.png")
+        if log:
+            filename = f"{dataframe.name}_log_plot.png"
+        else:
+            filename = f"{dataframe.name}_plot.png"
+        figure_path = os.path.join(recording_directory, filename)
         plt.savefig(figure_path)
     else:
         plt.show()
@@ -129,11 +135,11 @@ def reformat_average_dataframe(dataframe):
 
     # Set up the results dataframes
     core_data = pd.DataFrame()
-    core_data.name = "core functions"
+    core_data.name = "core_functions"
     dataset_data = pd.DataFrame()
-    dataset_data.name = "Dataset methods"
+    dataset_data.name = "Dataset_methods"
     emulator_data = pd.DataFrame()
-    emulator_data.name = "Emulator methods"
+    emulator_data.name = "Emulator_methods"
 
     # Split the dataframe into the 3 dataframes
     for column in dataframe.columns:

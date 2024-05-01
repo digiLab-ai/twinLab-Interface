@@ -95,16 +95,16 @@ class EstimatorParams(Params):
         estimator_type (str, optional): Specifies the type of Gaussian process to use for the emulator.
             The default is ``"single_task_gp"``, but the value can be chosen from the following list:
 
-            • ``"single_task_gp"``: The standard Gaussian Process, which learns a mean, covariance, and noise level.
-            • ``"fixed_noise_gp"``: A Gaussian Process with fixed noise, which is specified by the user.
+            - ``"single_task_gp"``: The standard Gaussian Process, which learns a mean, covariance, and noise level.
+            - ``"fixed_noise_gp"``: A Gaussian Process with fixed noise, which is specified by the user.
               Particularly useful for modelling noise-free simulated data where the noise can be set to zero manually.
-            • ``"heteroskedastic_gp"``: A Gaussian Process with fixed noise that is allowed to vary with the input.
+            - ``"heteroskedastic_gp"``: A Gaussian Process with fixed noise that is allowed to vary with the input.
               The noise is specified by the user, and is also learned by the Process.
-            • ``"variational_gp"``: An approximate Gaussian Process that is more efficient to train with large datasets.
-            • ``"mixed_single_task_gp"``: A Gaussian Process that works with a mix of continuous and categorical or discrete input data.
-            • ``"multi_fidelity_gp"``:  A Gaussian Process that works with input data that has multiple levels of fidelity.
+            - ``"variational_gp"``: An approximate Gaussian Process that is more efficient to train with large datasets.
+            - ``"mixed_single_task_gp"``: A Gaussian Process that works with a mix of continuous and categorical or discrete input data.
+            - ``"multi_fidelity_gp"``:  A Gaussian Process that works with input data that has multiple levels of fidelity.
               For example, combined data from both a high- and low-resolution simulation.
-            • ``"fixed_noise_multi_fidelity_gp"``: A Gaussian Process that works with input data that has multiple levels of fidelity and fixed noise.
+            - ``"fixed_noise_multi_fidelity_gp"``: A Gaussian Process that works with input data that has multiple levels of fidelity and fixed noise.
     """
 
     def __init__(
@@ -328,9 +328,13 @@ class ScoreParams(Params):
 
     Attributes:
         metric (str, optional): Metric used for scoring the performance of an emulator.
-            Can be either:
-            • ``"MSE"``: Mean Squared Error, which only compared the mean emulator prediction to the test data.
-            • ``"MSLL"``: Mean Squared Log Loss, which compares the distribution of the emulator prediction to the test data.
+            Can be one of:
+
+            - ``"MSLL"``: Mean Squared Log Loss, which compares the distribution of the emulator prediction to that of the test data.
+              A score of zero is that of the most naive data-generating model, which predicts the mean and standard deviation of the training data.
+              Lower (more negative) scores are better, while positive scores indicate serious problems.
+            - ``"MSE"``: Mean Squared Error, which only compares the mean emulator prediction to the test data.
+
             The default is ``"MSLL"``.
         combined_score (bool, optional): Determining whether to combined (average) the emulator score across output dimensions.
             If ``False`` a dataframe of scores will be returned, with the score for each output dimension, even if there is only a single emulator output dimension.
@@ -362,8 +366,8 @@ class BenchmarkParams(Params):
         type (str, optional): Specifies the type of emulator benchmark to be performed.
             Can be either:
 
-            • ``"quantile"``: The calibration curve is calculated over Gaussian quantiles.
-            • ``"interval"``: The calibration curve is calculated over Gaussian confidence intervals.
+            - ``"quantile"``: The calibration curve is calculated over Gaussian quantiles.
+            - ``"interval"``: The calibration curve is calculated over Gaussian confidence intervals.
 
             The default is ``"quantile"``.
 

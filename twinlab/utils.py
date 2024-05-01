@@ -63,7 +63,8 @@ def check_dataset(string: str) -> None:
 
     """
 
-    # check for duplicate columns # TODO this assumes label is row 0
+    # Check for duplicate columns
+    # TODO: This assumes label is row 0
     header = pd.read_csv(io.StringIO(string), header=None, nrows=1).iloc[0].to_list()
     if len(set(header)) != len(header):
         raise TypeError("Dataset must contain no duplicate column names.")

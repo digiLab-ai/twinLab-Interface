@@ -4,7 +4,7 @@ import json
 import sys
 import time
 import uuid
-
+import warnings
 from pprint import pprint
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -154,16 +154,18 @@ def _wait_for_job_completion(
     return status, body
 
 
-# TODO: This is awful!
+# TODO: This function needs streamlining, what about dict.get(key, default)?
 # TODO: All responses should return a "message", then this would not be necessary
 @typechecked
 def _get_response_message(body: dict) -> str:
-    if "message" in body:  # TODO: Yuck!
+    if "message" in body:  # TODO: if/else structure needs to be streamlined
         message = body["message"]
     elif "process_status" in body:
-        message = body["process_status"]  # TODO: This is a foul hack
-    elif "process_status:" in body:
-        message = body["process_status:"]  # TODO: This is an even fouler hack
+        message = body["process_status"]
+    elif (
+        "process_status:" in body
+    ):  # TODO: Note the colon; this needs to be made more robust
+        message = body["process_status:"]
     else:
         message = "No response message in body"
     return message
@@ -355,19 +357,19 @@ class Emulator:
         if verbose:
             message = utils.get_message(response)
             print(message)
-        # TODO: Should process_id be appended to the emulator object?
-        self.process_id = utils.get_value_from_body("process_id", response)
+
+        # Get the process ID from the response
+        process_id = utils.get_value_from_body("process_id", response)
         if verbose:
-            print(f"Emulator {self.id} with process ID {self.process_id} is training.")
+            print(f"Emulator {self.id} with process ID {process_id} is training.")
         if not wait:
-            return self.process_id
-        _wait_for_training_completion(self.id, self.process_id, verbose=verbose)
+            return process_id
+        _wait_for_training_completion(self.id, process_id, verbose=verbose)
         if verbose:
             print(
-                f"Training of emulator {self.id} with process ID {self.process_id} is complete!"
+                f"Training of emulator {self.id} with process ID {process_id} is complete!"
             )
 
-    # TODO: This seems to be completely broken!! There is no self.process_id!!
     @typechecked
     def status(self, process_id: str, verbose: bool = False) -> dict:
         """Check the status of a training process on the twinLab cloud.
@@ -734,8 +736,7 @@ class Emulator:
         Note that a test dataset must have been defined in order for this to produce a result.
         This means that ``train_test_ratio`` in TrainParams must be less than ``1`` when training the emulator.
         If there is no test dataset then this will return ``None``.
-        The score can be calculated using two metrics: the mean-squared error (MSE) or mean-standarised log loss (MSLL).
-        See the ``ScoreParams`` class for a full list and description of available metrics.
+        The score can be calculated using different metrics, see the ``ScoreParams`` class for a full list and description of available metrics.
 
         Args:
             params (ScoreParams, optional): A parameters object that contains optional scoring parameters.
@@ -788,8 +789,7 @@ class Emulator:
                 print(score)  # Could be pd.DataFrame or float
             return score
         else:
-            # TODO: Convert to warning!
-            print(
+            warnings.warn(
                 "No test data was available for this emulator, so it cannot be scored."
             )
 
@@ -853,9 +853,8 @@ class Emulator:
                 pprint(df)
             return df
         else:
-            # TODO: Convert to warning!
-            print(
-                "No test data was available for this emulator, so it cannot be benchmarked."
+            warnings.warn(
+                "No test data was available for this emulator, so it cannot be scored."
             )
 
     @typechecked

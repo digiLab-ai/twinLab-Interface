@@ -202,7 +202,7 @@ def list_datasets(verbose: bool = False) -> List[str]:
 @typechecked
 def list_emulators(
     verbose: bool = False,
-) -> Optional[List[str]]:  # TODO: Is this really an Optional return type?
+) -> List[str]:
     """List trained emulators that exist in the user's twinLab cloud account.
 
     These trained emulators can be used for a variety of inference operations (see methods of the Emulator class).

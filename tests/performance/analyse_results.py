@@ -52,3 +52,4 @@ for dataframe in list_dataframes:
     print(f"\n----{dataframe.name}----\n")
     print(dataframe)
     plot_results(dataframe, data_path, date=True)
+    plot_results(dataframe, data_path, date=True, log=True)

@@ -292,3 +292,19 @@ def test_calibrate(training_setup, data_regression, dataframe_regression):
     # Check inverse methods results
     data_regression.check(columns_indices)
     dataframe_regression.check(calibrate_df)
+
+
+def test_list_processes(training_setup):
+    _, emulator = training_setup
+
+    # Call list_processes method
+    emulator.list_processes()
+
+
+def test_get_process(training_setup):
+    _, emulator = training_setup
+
+    # Call list_processes method
+    processes = emulator.list_processes()
+
+    emulator.get_process(processes[0]["process_id"])

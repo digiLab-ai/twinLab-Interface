@@ -17,6 +17,7 @@ def test_success_response(upload_setup):
     assert status == 200
     assert body["message"] == "Model test_model has begun training."
     assert "process_id" in body
+    assert "train" in body["process_id"]
 
 
 def test_fail_response_with_invalid_dataset():

@@ -223,8 +223,6 @@ def test_functional(data_regression, dataframe_regression):
     # Create and train emulator
     params = tl.TrainParams(
         train_test_ratio=train_test_ratio,
-        # input_explained_variance=input_explained_variance,
-        # output_explained_variance=output_explained_variance,
         input_retained_dimensions=input_retained_dimensions,
         output_retained_dimensions=output_retained_dimensions,
         seed=seed,
@@ -246,6 +244,25 @@ def test_functional(data_regression, dataframe_regression):
     data_regression.check(summary_keys, basename=f"{test_base}_keys")
     summary_numerical = get_numerical_dictionary(estimator_diagnostics, ndigits=ndigits)
     data_regression.check(summary_numerical, basename=f"{test_base}_summary")
+
+    # extract the transform diagnostics
+    transform_diagnostics = summary_dictionary["transform"]
+    assert "input" in transform_diagnostics
+    assert "output" in transform_diagnostics
+
+    # Isolate input/output dictionaries and check individually
+    summary_numerical_input = get_numerical_dictionary(
+        transform_diagnostics["input"][0], ndigits=ndigits
+    )
+    summmary_numerical_output = get_numerical_dictionary(
+        transform_diagnostics["output"][0], ndigits=ndigits
+    )
+    data_regression.check(
+        summary_numerical_input, basename="test_functional_summary_input"
+    )
+    data_regression.check(
+        summmary_numerical_output, basename="test_functional_summary_output"
+    )
 
     # Test predict
     df = tl.load_dataset(eval_path)

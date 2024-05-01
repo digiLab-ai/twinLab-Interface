@@ -11,6 +11,7 @@ def test_predict(training_setup, data_csv):
     )
     assert status == 202
     assert "process_id" in body
+    assert "predict" in body["process_id"]
     assert body["message"] == "Campaign method predict started"
 
 
@@ -31,6 +32,7 @@ def test_sample(training_setup, data_csv):
     )
     assert status == 202
     assert "process_id" in body
+    assert "sample" in body["process_id"]
     assert body["message"] == "Campaign method sample started"
 
 
@@ -45,6 +47,7 @@ def test_get_candidate_points(training_setup):
     )
     assert status == 202
     assert "process_id" in body
+    assert "get_candidate_points" in body["process_id"]
     assert body["message"] == "Campaign method get_candidate_points started"
 
 
@@ -66,4 +69,5 @@ def test_solve_inverse(training_setup, inverse_csv, inverse_std_csv):
     )
     assert status == 202
     assert "process_id" in body
+    assert "solve_inverse" in body["process_id"]
     assert body["message"] == "Campaign method solve_inverse started"
