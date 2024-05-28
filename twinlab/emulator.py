@@ -21,6 +21,7 @@ from .params import (
     BenchmarkParams,
     CalibrateParams,
     DesignParams,
+    MaximizeParams,
     PredictParams,
     RecommendParams,
     SampleParams,
@@ -59,6 +60,7 @@ PROCESS_MAP = {
     "sample": "sample",
     "get_candidate_points": "recommend",
     "solve_inverse": "calibrate",
+    "maximize": "maximize",
 }
 
 ALLOWED_DATAFRAME_SIZE = 5.5 * int(
@@ -181,6 +183,9 @@ def _process_csv(
         df_mean, df_std = df.iloc[:, : n // 2], df.iloc[:, n // 2 :]
         df_std.columns = df_std.columns.str.removesuffix(" [std_dev]")
         return df_mean, df_std
+    elif method == "maximize":
+        df = pd.read_csv(csv, sep=",")
+        return df
     elif method == "sample":
         df_result = pd.read_csv(csv, header=[0, 1], sep=",")
         return df_result
@@ -493,7 +498,7 @@ class Emulator:
             verbose (bool, optional): Display information about the operation while running.
 
         Returns:
-            pandas.DataFrame: Dataframe containing the training data on which the emulator was tested
+            pandas.DataFrame: Dataframe containing the training data on which the emulator was tested.
 
         Example:
 
@@ -526,7 +531,7 @@ class Emulator:
             verbose (bool, optional): Determining level of information returned to the user. Default is False.
 
         Returns:
-            dict: Dictionary containing all processes associated with the emulator
+            dict: Dictionary containing all processes associated with the emulator.
 
         Example:
 
@@ -799,14 +804,18 @@ class Emulator:
         params: BenchmarkParams = BenchmarkParams(),
         verbose: bool = False,
     ) -> Optional[pd.DataFrame]:
-        """Benchmark the performance of a trained emulator with a calibration curve.
+        """Benchmark the predicted uncertainty of a trained emulator.
 
-        A test dataset must have been defined in order for this to produce a meaningful result.
+        A test dataset must have been defined in order for this to produce a result (otherwise ``None`` is returned).
         This means that ``train_test_ratio`` must be less than 1 when training the emulator.
-        The calibration curve can be plotted to show how well the training data fits to the emulator,
-        and is calculated differently depending on the `params` chosen.
-        The returned dataframe contains 100 rows for each output column of the emulator.
-        These can be plotted to ascertain the performance of the emulator.
+        This method returns the calibration curve of a trained emulator, which can be used to asses the quality of the uncertainty predictions.
+        The calibration curve is a plot of the fraction of values that are predicted to be within a certain confidence interval against the actual fraction of values that are within that interval.
+
+        100 monotonically increasing values between 0 and 1 are returned for each output dimension of the emulator, in the form of a ``pandas.DataFrame``.
+        These values can be plotted as the values on a y-axis, while the x-axis is taken to be 100 equally spaced values between 0 and 1 (inclusive).
+        A well-calibrated emulator will have a curve that is close to the line ``y = x``.
+        If the shape deviates from this line, the emulator may be under- or overconfident, but the exact interpretation depends on the type of curve.
+        See the documentation for ``BenchmarkParams`` for more information on the available types.
 
         Args:
             params (BenchmarkParams, optional): A parameter-configuration object that contains optional parameters for benchmarking an emulator.
@@ -837,7 +846,7 @@ class Emulator:
                 99  1.0
 
         """
-        # TODO: This needs to be understood and documented better
+        # TODO: Maybe include how to plot calibration curve in a docstring code snippet.
 
         csv = self._use_method(
             method="get_calibration_curve",
@@ -968,8 +977,8 @@ class Emulator:
 
         If the output of the multi-indexed DataFrame needs to be manipulated then we provide the convenience functions:
 
-            - ``tl.get_sample``: Isolate an individual sample into a new ``pandas.DataFrame``
-            - ``tl.join_samples``: Join together multiple sets of samples into a single ``pandas.DataFrame``
+        - ``tl.get_sample``: Isolate an individual sample into a new ``pandas.DataFrame``
+        - ``tl.join_samples``: Join together multiple sets of samples into a single ``pandas.DataFrame``
 
         Args:
             df (pandas.DataFrame): The ``X`` values for which to draw samples.
@@ -1053,14 +1062,19 @@ class Emulator:
 
         The recommend functionality of an emulator is used to suggest new data points to sample.
         These new data points can be chosen depending on a variety of different user objectives.
-        Currently, the user can choose between ``"optimise"`` and ``"explore"`` acquisition functions.
-        Choosing ``"optimise"`` will obtain suggested ``"X"`` values the evaluation of which (acquiring the corresponding ``"y"``) will maximise the knowledge of the emulator about the location of the maximum.
-        A classic use case for this would be a user trying to maximise the output of a model.
-        For example, the maximum strenth of a pipe given a set of design parameters.
-        Choosing ``"explore"`` will instead suggest ``"X"`` that reduce the overall uncertainty of the emulator across the entire input space.
-        A classic use case for this would be a user trying to reduce overally uncertainty.
-        For example, a user trying to reduce the uncertainty in the strength of a pipe across all design parameters.
-        The number of requested data points can be specified by the user, and if this is greater than one then then recommendations are all suggested at once, and are designed to be the optmial set, as a group, to achieve the user outcome.
+        Currently, the user can choose between ``"optimise"`` and ``"explore"`` acquisition functions:
+
+        - ``"optimise"`` will obtain suggested ``"X"`` values the evaluation of which (acquiring the corresponding ``"y"``) will maximize the knowledge of the emulator about the location of the maximum.
+          A classic use case for this would be a user trying to maximize the output of a model (e.g., the combination of metals that creates the strongest alloy).
+          This method can also be used to minimize an output, by using the ``weight`` argument of ``RecommendParams`` to multiply the output by -1.
+          If an emulator has more-than-one output, then a weighted combination of the outputs can be minimized/maximized.
+          Once again, using the ``opt_weight`` argument of ``MaximizeParams`` can control the weight assigned to each output, or can be used to focus on a single output.
+          For example, the maximum strength of a pipe given a set of design parameters.
+        - ``"explore"`` will instead suggest ``"X"`` that reduce the overall uncertainty of the emulator across the entire input space.
+          A classic use case for this would be a user trying to reduce overally uncertainty.
+          For example, a user trying to reduce the uncertainty in the strength of a pipe across all design parameters.
+
+        The number of requested data points can be specified by the user, and if this is greater than 1 then then recommendations are all suggested at once, and are designed to be the optmial set, as a group, to achieve the user outcome.
         twinLab optimises which specific acquisition function within the chosen category will be used, prioritising numerical stability based on the number of points requested.
 
         The value of the acquisition function is also returned to the user.
@@ -1259,6 +1273,77 @@ class Emulator:
         return df
 
     @typechecked
+    def maximize(
+        self,
+        params: MaximizeParams = MaximizeParams(),
+        wait: bool = True,
+        verbose: bool = False,
+    ) -> Union[pd.DataFrame, str]:
+        """Finding the maximum the output of a trained emulator that exists on the twinLab cloud.
+
+        This method of an emulator is used to find the point in the input space that maximizes the output of your trained emulator.
+        This method is useful for finding the best possible input for your model, given the emulator predictions.
+        This can help provide guidance for how best to configure your experiment, for example.
+        This method can be used in a stand-alone manner to find the maximum, or at the end of a Bayesian optimization loop to find the best possible input.
+        This method can also be used to minimize an output, by using the ``opt_weight`` argument of ``MaximizeParams`` to multiply the output by -1.
+        If an emulator has more-than-one output, then a weighted combination of the outputs can be minimized/maximized.
+        Once again, using the ``opt_weight`` argument of ``MaximizeParams`` can control the weight assigned to each output, or can be used to focus on a single output.
+
+        Args:
+            params (MaximizeParams): A parameter-configuration that contains optional parameters for finding the input that produces the maximum model output.
+            wait (bool, optional): If ``True`` wait for the job to complete, otherwise return the process ID and exit.
+            verbose (bool, optional): Display detailed information about the operation while running.
+
+        Returns:
+            Tuple[pandas.DataFrame], str: By default, a Dataframe containing the input that optimizes your emulator predictions.
+            Instead, if ``wait=False``, the process ID is returned.
+            The results can then be retrieved later using ``Emulator.get_process(<process_id>)``.
+            Process IDs associated with an emulator can be found using ``Emulator.list_processes()``.
+
+        Example:
+            .. code-block:: python
+
+                emulator = tl.Emulator("quickstart")
+                emulator.maximize()
+
+            .. code-block:: console
+
+                          X
+                0  0.845942
+
+        """
+        API_METHOD = "maximize"
+        if SYNC:
+            csv = self._use_method(
+                method=API_METHOD,
+                **params.unpack_parameters(),
+                verbose=verbose,
+            )
+        else:
+            _, response = api.use_request_model(
+                model_id=self.id,
+                method=API_METHOD,
+                **params.unpack_parameters(),
+                processor=PROCESSOR,
+                verbose=DEBUG,
+            )
+            process_id = utils.get_value_from_body("process_id", response)
+            if verbose:
+                print(f"Job {PROCESS_MAP[API_METHOD]} process ID: {process_id}")
+            if not wait:
+                return process_id
+            _, response = _wait_for_job_completion(
+                self.id, API_METHOD, process_id, verbose=verbose
+            )
+            csv = utils.get_value_from_body("dataframe", response)
+            csv = io.StringIO(csv)
+        df = _process_csv(csv, API_METHOD)
+        if verbose:
+            print("Optimal input:")
+            print(df)
+        return df
+
+    @typechecked
     def learn(
         self,
         dataset: Dataset,
@@ -1290,7 +1375,7 @@ class Emulator:
             num_points_per_loop (int): Number of points to sample in each loop.
             acq_func (str): Specifies the acquisition function to be used when recommending new points: either ``"explore"`` or ``"optimise"``.
             simulation (Callable): A function that takes in a set of inputs and generates the outputs (for example, a simulator for the data generating process).
-            train_params (TrainParams, optional): A parameter configuration that contains optional training parameters. Note that currently we only support the case when ``"test_train_ratio=1"`` when running a learning loop.
+            train_params (TrainParams, optional): A parameter configuration that contains optional training parameters. Note that currently we only support the case when ``"test_train_ratio=1"`` when running a learning loop. Note that fixed-noise Gaussian Processes are not supported in this method and will raise an error. This includes: ``"fixed_noise_gp"``, ``"heteroskedastic_gp"``, ``"fixed_noise_multi_fidelity_gp"``.
             recommend_params (RecommendParams, optional): A parameter configuration that contains optional recommendation parameters.
             verbose (bool, optional): Display detailed information about the operation while running. If ``True``, the requested candidate points will be printed to the screen while running. If ``False`` the emulator will be updated on the cloud while the method runs silently.
 
@@ -1311,14 +1396,26 @@ class Emulator:
 
         """
 
+        # Perform checks
+        # NOTE: We could relax the train_test_ratio requirement in the future, but only easily with shuffle=False
+        # and only by changing the train_test_ratio each iteration so that the test set is preserved
         if train_params.train_test_ratio != 1:
             raise ValueError(
                 f"The test_train_ratio must be set to 1, not {train_params.train_test_ratio}, for this method to work."
             )
-
         if num_loops <= 0:
             raise ValueError(
                 f"num_loops must be set to an integer value of 1 or more, not {num_loops}, for this method to work."
+            )
+        # NOTE: We could relax this in the future if we allowed for the simulation to output an error
+        invalid_GP_estimators = [
+            "fixed_noise_gp",
+            "heteroskedastic_gp",
+            "fixed_noise_multi_fidelity_gp",
+        ]
+        if train_params.estimator_params.estimator_type in invalid_GP_estimators:
+            raise ValueError(
+                f"The specified estimator type, {train_params.estimator_params.estimator_type}, is not currently supported. Please check the ``EstimatorParams`` documentation for more available estimator types."
             )
 
         # Train model initially
@@ -1342,9 +1439,12 @@ class Emulator:
             )
 
             # Evaluating the candidate points
-            candidate_points[outputs] = pd.DataFrame(
-                simulation(candidate_points[inputs].values)
-            )
+            candidate_points[outputs] = simulation(candidate_points[inputs].values)
+
+            # Download current training data, append new data, and reupload
+            df_train = self.view_train_data()
+            df_train = pd.concat([df_train, candidate_points], ignore_index=True)
+            dataset.upload(df_train)
 
             # Train model
             self.train(
@@ -1355,17 +1455,24 @@ class Emulator:
                 verbose=False,
             )
 
-            # Download current training data, append new data, and reupload
-            df_train = self.view_train_data()
-            df_train = pd.concat([df_train, candidate_points], ignore_index=True)
-            dataset.upload(df_train)
-
+            # Write summary of the iteration if verbose
             if verbose:
-                print(f"Iteration: {i}")
+                print(f"Iteration: {i+1}")
                 print("Suggested candidate point(s):")
                 pprint(candidate_points)
                 print("Acquisition function value:")
                 print(acq_func_value)
+                print()
+
+        # Print the estimated optimal point(s) after the final iteration if optimise and verbose
+        if verbose and acq_func == "optimise":
+            params = MaximizeParams(opt_weights=recommend_params.weights)
+            df_max = self.maximize(params=params, verbose=False)
+            print("Estimated optimal point(s):")
+            print(df_max)
+            print()
+
+        # A nice final message if verbose
         if verbose:
             print(
                 f"The candidate points have been uploaded in the Dataset {dataset.id}, alongside the emulator training data, on twinLab cloud."

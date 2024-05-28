@@ -31,6 +31,8 @@ ESTIMATORS_WITHOUT_COVAR_MODULE = [
     "mixed_single_task_gp",
 ]
 
+DEFAULT_SEED = 42
+
 
 def _check_estimator_type(estimator_type: str):
     # NOTE: This is necessary because the library defaults to `single_task_gp` if the estimator_type is not provided or wrong!
@@ -140,8 +142,8 @@ class ModelSelectionParams(Params):
         evaluation_metric (str, optional): Specifies the evaluation metric used to score different configuration during the model selection process.
             Can be either:
 
-            - ``"BIC"``: Bayesian information criterion.
             - ``"MSLL"``: Mean squared log loss.
+            - ``"BIC"``: Bayesian information criterion.
 
             The default is ``"MSLL"``.
         val_ratio (float, optional): Specifies the percentage of random validation data allocated to to compute the ``"BIC"`` metric.
@@ -237,9 +239,12 @@ class TrainParams(Params):
         model_selection (bool, optional): Whether to run Bayesian model selection, a form of automatic machine learning.
             The default value is ``False``, which simply trains the specified emulator, rather than iterating over them.
         model_selection_params (ModelSelectionParams, optional): The parameters for model selection, if it is being used.
+        shuffle (bool, optional): Whether to randomly shuffle the training data before splitting it into training and testing sets.
+            The default value is ``True``. Please be particularly careful while using this parameter with time-series data.
         seed (Union[int, None], optional): The seed used to initialise the random number generators for reproducibility.
             Setting to an integer is necessary for reproducible results.
-            The default value is ``None``, which means the seed is randomly generated each time.
+            The default value is ``42``, but it can be set to ``None`` to randomly generate the seed each time.
+            Be aware that the seed is used in the training process, so if the seed is set to ``None`` the training process will not be reproducible.
 
     """
 
@@ -256,7 +261,8 @@ class TrainParams(Params):
         train_test_ratio: float = 1.0,
         model_selection: bool = False,
         model_selection_params: ModelSelectionParams = ModelSelectionParams(),
-        seed: Optional[int] = None,
+        shuffle: bool = True,
+        seed: Optional[int] = DEFAULT_SEED,
     ):
         # Parameters that will be passed to the emulator on construction
         self.fidelity = fidelity
@@ -272,6 +278,7 @@ class TrainParams(Params):
         self.train_test_ratio = train_test_ratio
         self.model_selection = model_selection
         self.model_selection_params = model_selection_params
+        self.shuffle = shuffle
         self.seed = seed
 
         # Figure out whether or not to set decompose booleans
@@ -313,6 +320,7 @@ class TrainParams(Params):
             "train_test_ratio": self.train_test_ratio,
             "model_selection": self.model_selection,
             "model_selection_kwargs": self.model_selection_params.unpack_parameters(),
+            "shuffle": self.shuffle,
             "seed": self.seed,
         }
         train_params = remove_none_values(train_params)
@@ -330,17 +338,30 @@ class ScoreParams(Params):
         metric (str, optional): Metric used for scoring the performance of an emulator.
             Can be one of:
 
-            - ``"MSLL"``: Mean Squared Log Loss, which compares the distribution of the emulator prediction to that of the test data.
-              A score of zero is that of the most naive data-generating model, which predicts the mean and standard deviation of the training data.
-              Lower (more negative) scores are better, while positive scores indicate serious problems.
-            - ``"MSE"``: Mean Squared Error, which only compares the mean emulator prediction to the test data.
+            - "MSLL": The mean standardised log loss (MSLL), calculated as the mean of the log loss of the emulator minus the mean log loss of a trivial model.
+              The log loss is defined as the negative log of the probability of getting the test data value according to a predicted distribution.
+              The trivial model is taken to be a Gaussian distribution with mean and standard deviation equal to those of the training data.
+              Lower (more negative) scores are better, while positive scores indicate serious problems (a model that is less good than the extremely-trivial naive model).
+              The MSLL can be thought of as a measure of how good a model is, as opposed to just taking the average and standard deviation of the training data.
+              This is the default metric, and the only metric that accounts for the model uncertainty, which is usually necessary when training a probabilistic model.
+            - "MSE": The mean squared error (MSE) is the average of the squared differences between your predicted mean values and those of the test set.
+              The MSE quantifies deviations in the model mean predictions only, and is not affected by the model uncertainty estimates.
+              A value of zero indicates a model that fits to the data perfectly, but this is not necessarily desirable, as it may indicate overfitting.
+            - "RMSE": The root mean squared error (RMSE) is the square root of the MSE and provides a measure of the expected error in the output.
+              The RMSE may be considered more interpretable than the MSE, because it shares the same units as the output values.
+              However, like the MSE and R2, since model uncertainty is not apart of how this metric is calculated, a desirable RMSE score may belie an underlying poorly-fitting model.
+            - "R2": A dimensionless number calculated as one minus the ratio of the MSE to the variance of the test set.
+              A value of 1 indicates a perfect model, while a value of 0 indicates a model that is no better than the mean of the test set.
+              Negative values are possible but unusual, and indicate a model that is worse than simply taking the mean of the test set.
+              As with MSE and RMSE, the model uncertainty is not accounted for in this score; thus, it is possible to have a high R2 score, but a poorly-fitting model.
 
-            The default is ``"MSLL"``.
-        combined_score (bool, optional): Determining whether to combined (average) the emulator score across output dimensions.
-            If ``False`` a dataframe of scores will be returned, with the score for each output dimension, even if there is only a single emulator output dimension.
-            If ``True`` a single number will be returned, which is the average score across all output dimensions.
+            The default metric is "MSLL".
+
+        combined_score (bool, optional): Determine whether to combine (average) the emulator score across output dimensions.
+            If False, a dataframe of scores will be returned, with the score for each output dimension,
+            even if there is only a single emulator output dimension.
+            If True, a single number will be returned, which is the average score across all output dimensions.
             The default is ``False``.
-
     """
 
     def __init__(
@@ -364,16 +385,27 @@ class BenchmarkParams(Params):
 
     Attributes:
         type (str, optional): Specifies the type of emulator benchmark to be performed.
-            Can be either:
+            Can be one of:
 
-            - ``"quantile"``: The calibration curve is calculated over Gaussian quantiles.
-            - ``"interval"``: The calibration curve is calculated over Gaussian confidence intervals.
+            - ``"quantile"``: The calibration curve is calculated over statistical quantiles.
+            - ``"interval"``: The calibration curve is calculated over confidence intervals.
 
             The default is ``"quantile"``.
 
-    """
+        For example, for a well calibrated emulator one would expect to have 10 percent of the unseen datapoints (from the test set) to be outside of the emulator's 90 percent confidence bound.
+        If a given confidence interval contains less than expected amount of data the model is underconfident, whereas if it contains more then it is overconfident.
+        The calibration curve is necessarily equal to ``0`` and ``1`` at the beginning and end respectively, as the fraction of data within the entire confidence interval must be between 0 and 1.
+        Curves are also necessarily monotonically increasing.
+        Convex calibration curves (those below the line ``y = x``) indicate that the model is underconfident,
+        while concave calibration curves (those above the line ``y = x``) indicate that the model is overconfident.
+        It is possible for a curve to be both above and below the line ``y = x``, indicating regions of under- and overconfidence, and possible non-Gaussianity in the data.
 
-    # TODO: This docstring needs to be massively improved.
+        If ``type = "quantile"`` then the calibration curve is calculated over statistical quantiles extending from negative infinity to positive infinity.
+
+        If ``type = "interval"`` then the calibration curve is calculated over confidence intervals,
+        starting from the mean of the distribution and extending outwards in both directions simultaneously until the entire confidence interval is covered at negative/positive infinity.
+
+    """
 
     def __init__(
         self,
@@ -391,7 +423,7 @@ class PredictParams(Params):
     """Parameter configuration for making predictions using a trained emulator.
 
     Attributes:
-        observation_noise (bool, optional): Whether or not to include the noise term in the standard deviation of the prediction.
+        observation_noise (bool): Whether or not to include the noise term in the standard deviation of the prediction.
             Setting this to ``False`` can be a good idea if the training data is noisy but the underlying trend of the trained model is smooth.
             In this case, the predictions would correspond to the underlying trend.
             Setting this to ``True`` can be a good idea to see the spread of possible predictions including the noise.
@@ -419,6 +451,11 @@ class SampleParams(Params):
         seed (Union[int, None], optional): Specifies the seed used by the random number generator to generate a set of samples.
             Setting this to an integer is useful for the reproducibility of results.
             The default value is ``None``, which means the seed is randomly generated each time.
+        observation_noise (bool): Whether or not to include the noise term in the standard deviation of the samples generated.
+            Setting this to ``False`` can be a good idea if the training data is noisy but the underlying trend of the trained model is smooth.
+            In this case, the samples would look smooth and would model the underlying trend well.
+            Setting this to ``True`` can be a good idea to visualise how noisy are the samples from the emulator, which is a consequence of the noise in the observations.
+            The default value is ``False``.
         fidelity (Union[pandas.DataFrame, None], optional): Fidelity information to be provided if the model is a multi-fidelity model (``estimator_type="multi_fidelity_gp"`` in ``EstimatorParams``).
             This must be a single column `pandas.DataFrame` with the same sample order as the dataframe of X values used to draw samples.
             The default value is ``None``, which is appropriate for most trained emulators.
@@ -430,13 +467,21 @@ class SampleParams(Params):
     def __init__(
         self,
         seed: Optional[int] = None,
+        observation_noise: bool = False,
         fidelity: Optional[pd.DataFrame] = None,
     ):
         self.seed = seed
+        self.observation_noise = observation_noise
         self.fidelity = fidelity
 
     def unpack_parameters(self):
-        params = {"kwargs": {"seed": self.seed, "fidelity": self.fidelity}}
+        params = {
+            "kwargs": {
+                "seed": self.seed,
+                "observation_noise": self.observation_noise,
+                "fidelity": self.fidelity,
+            }
+        }
         params = remove_none_values(params)
         if "fidelity" in params["kwargs"]:
             params["kwargs"]["fidelity"] = _convert_dataframe_to_dict(
@@ -469,8 +514,19 @@ class RecommendParams(Params):
 
     Attributes:
         weights (Union[list[float], None], optional):
-            A list of weighting values that are used to scalarise the objective function in the case of a multi-output model.
-            The default value is ``None``, which applies equal weight to each output dimension.
+            A list of weighting values that are used to create a scalar objective function in the case of a multi-output model.
+            The recommend functionality can only work on a single scalar function, so in the case of a multi-output model, the outputs must be combined into a single scalar value.
+            The weights create a linear combinations of the outputs, where the weights are the coefficients of the linear combination.
+            In the case of a single-output model, the weights are not used and have no impact.
+            If the output dimensions are not equally important, the weights can be used to reflect this.
+            If the output values have different units, the weights must be chosen to reflect this.
+            For example, if two outputs have units of distance and time the weights implicitly have units such that these can be combined (i.e., per metre and per second).
+            A list of values is used here, where the first value corresponds to the first output, the second value to the second output, and so on.
+            For example, ``[1, 2, 3]`` would create a linear combination of the outputs where the first output is multiplied by 1, the second output by 2, and the third output by 3.
+            In this case, the third output is considered to be three times as important as the first output.
+            If the values ``[0, 1]`` are used, the first output is ignored and the second output is used as the scalar objective function.
+            If the values ``[-1, 0]`` are used, the first output is used as the scalar objective function, and is minimized.
+            The default value, ``None``, applies equal weight to each output dimension. This is recommended for functional emulators.
         num_restarts (int, optional): The number of random restarts for optimisation.
             The default value is ``5``.
         raw_samples (int, optional): The number of samples for initialization.
@@ -627,3 +683,35 @@ class DesignParams:
     ):
         self.seed = seed
         self.sampling_method = sampling_method
+
+
+class MaximizeParams(Params):
+    """Parameter configuration for finding the location of the maximum output of your emulator.
+
+    Attributes:
+        opt_weights (Union[List[float], None], optional): A list of weighting values that are used to create a scalar objective function in the case of a multi-output model.
+            The maximize functionality can only work on a single scalar function, so in the case of a multi-output model, the outputs must be combined into a single scalar value.
+            The weights create a linear combinations of the outputs, where the weights are the coefficients of the linear combination.
+            In the case of a single-output model, the weights are not used and have no impact.
+            If the output dimensions are not equally important, the weights can be used to reflect this.
+            If the output values have different units, the weights must be chosen to reflect this.
+            For example, if two outputs have units of distance and time the weights implicitly have units such that these can be combined (i.e., per metre and per second).
+            A list of values is used here, where the first value corresponds to the first output, the second value to the second output, and so on.
+            For example, ``[1, 2, 3]`` would create a linear combination of the outputs where the first output is multiplied by 1, the second output by 2, and the third output by 3.
+            In this case, the third output is considered to be three times as important as the first output.
+            If the values ``[0, 1]`` are used, the first output is ignored and the second output is used as the scalar objective function.
+            If the values ``[-1, 0]`` are used, the first output is used as the scalar objective function, and is minimized.
+            The default value, ``None``, applies equal weight to each output dimension. This is recommended for functional emulators.
+
+    """
+
+    def __init__(
+        self,
+        opt_weights: Optional[List[float]] = None,
+    ):
+        self.opt_weights = opt_weights
+
+    def unpack_parameters(self):
+        params = {"opt_weights": self.opt_weights}
+        params = remove_none_values(params)
+        return params

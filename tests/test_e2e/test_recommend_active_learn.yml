@@ -1,9 +1,0 @@
-columns:
-- Pack price [GBP]
-- Number of biscuits per pack
-indices:
-- 0
-- 1
-- 2
-- 3
-- 4

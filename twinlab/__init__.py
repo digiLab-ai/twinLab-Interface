@@ -59,6 +59,7 @@ from .params import (
     DesignParams,
     EstimatorParams,
     ModelSelectionParams,
+    MaximizeParams,
     OptimiserParams,
     PredictParams,
     RecommendParams,

@@ -94,17 +94,17 @@ class Dataset:
         """Return an analysis of the variance retained per dimension.
 
         Args:
-            columns (list[str]): List of columns to evaluate. This would usually be either the set of input or output columns.
+            columns (list[str]): List of columns to evaluate. This is typically either the set of input or output columns.
             verbose (bool, optional): Display information about the operation while running.
 
         Returns:
-            pandas.Dataframe containing the variance analysis.
+            pandas.Dataframe: A ``pandas.DataFrame`` containing the variance analysis.
 
         Example:
             .. code-block:: python
 
                 dataset = tl.Dataset("quickstart")
-                dataset.analyse_variance(columns=["x", "y"]) # Usually the columns would be either input or output
+                dataset.analyse_variance(columns=["x", "y"]) # Typically either input or output columns
 
             .. code-block:: console
 
@@ -114,6 +114,10 @@ class Dataset:
                 2                     2             1.000000
 
         """
+        if len(columns) == 1:
+            raise ValueError(
+                "Singular value decomposition should use more than one column. Please retry with more than one input or output column."
+            )
         columns_string = ",".join(columns)
         _, response = api.analyse_dataset(
             self.id, columns=columns_string, verbose=DEBUG
@@ -179,7 +183,7 @@ class Dataset:
             verbose (bool, optional): Display information about the operation while running.
 
         Returns:
-            pandas.Dataframe containing the requested dataset.
+            pandas.Dataframe: A ``pandas.DataFrame`` containing the requested dataset.
 
         Example:
             .. code-block:: python
@@ -223,7 +227,7 @@ class Dataset:
             verbose (bool, optional): Display information about the operation while running.
 
         Returns:
-            pandas.DataFrame: DataFrame with summary statistics.
+            pandas.DataFrame: A ``pandas.DataFrame`` with summary statistics.
 
         Example:
             .. code-block:: python
