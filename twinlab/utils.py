@@ -194,3 +194,121 @@ def remove_none_values(d: dict) -> dict:
         for k, v in d.items()
         if v is not None
     }
+
+
+@typechecked
+def reformat_summary_dict(summary_dict: dict, detailed: bool = False) -> dict:
+    """
+    Function to reformat the summary dictionary.
+    """
+    properties, mean, kernel, likelihood = {}, {}, {}, {}
+
+    # To retrieve the dictionary from the "base_estimator_diagnostics" key, when input or output decomposition is applied
+    if "base_estimator_diagnostics" in summary_dict["estimator_diagnostics"].keys():
+        estimator_diagnostics = summary_dict["estimator_diagnostics"].get(
+            "base_estimator_diagnostics"
+        )
+    else:
+        estimator_diagnostics = summary_dict.get("estimator_diagnostics")
+
+    # Non-detailed case when only the learned hyperparameters are returned along with the covar_module and mean_module
+    if "learned_hyperparameters" in estimator_diagnostics.keys():
+        learned_params = estimator_diagnostics.get("learned_hyperparameters")
+
+        # Augment properties with parameters of the variational distribution for Variational GP
+        if "variational_strategy.inducing_points" in learned_params.keys():
+            properties["inducing_points"] = learned_params.get(
+                "variational_strategy.inducing_points"
+            )
+            properties["variational_distribution_mean"] = learned_params.get(
+                "variational_strategy._variational_distribution.variational_mean"
+            )
+            properties["variational_distribution_covar"] = learned_params.get(
+                "variational_strategy._variational_distribution.chol_variational_covar"
+            )
+
+        # Write the standard learned hyperparameters to the properties dictionary
+        properties["covariance_noise"] = learned_params.get(
+            "likelihood.noise_covar.original_noise"
+        )
+        mean["mean"] = learned_params.get("mean_module.original_constant")
+        mean["mean_function_used"] = estimator_diagnostics.get("mean_module")
+        kernel["lengthscale"] = learned_params.get(
+            "covar_module.base_kernel.original_lengthscale"
+        )
+        kernel["outputscale"] = learned_params.get("covar_module.original_outputscale")
+        kernel["kernel_function_used"] = estimator_diagnostics["covar_module"].replace(
+            "\n", ""
+        )
+    else:
+        return summary_dict
+    if not detailed:
+        return {"properties": properties, "mean": mean, "kernel": kernel}
+    else:
+        transform_list = ["input_transform_parameters", "outcome_transform_parameters"]
+        join_delimiter = "_"
+
+        # Extracting transform parameters
+        if (
+            transform_list[0] in estimator_diagnostics.keys()
+            and transform_list[1] in estimator_diagnostics.keys()
+        ):
+            for transform_parameters in transform_list:
+                for key in estimator_diagnostics[transform_parameters].keys():
+                    # To avoid double underscores for some transform parameters
+                    param_name = key.split(".")
+                    if param_name[1][0] == "_":
+                        param_name = param_name[0] + param_name[1]
+                    else:
+                        param_name = param_name[0] + "_" + param_name[1]
+                    properties[param_name] = estimator_diagnostics[
+                        transform_parameters
+                    ].get(key)
+            properties.pop(
+                "outcome_transform_is_trained", None
+            )  # Remove outcome_transform_is_trained parameter
+
+        # Extract mean parameters
+        if "mean_module_parameters" in estimator_diagnostics.keys():
+            mean["raw_constant"] = estimator_diagnostics["mean_module_parameters"].get(
+                "mean_module.raw_constant"
+            )
+
+        # Extracting kernel parameters
+        if "covar_module_parameters" in estimator_diagnostics.keys():
+            covar_module_params = estimator_diagnostics["covar_module_parameters"]
+            for key in covar_module_params.keys():
+                param_name = key.split(".")
+                # Retrieving parameter names for Multi-Fidelity GP
+                if len(param_name) > 5 and param_name[3] == "0":
+                    param_name = join_delimiter.join(param_name[4:])
+                # Retrieving parameter names for Mixed Single Task GP
+                elif len(param_name) > 6 and param_name[1] == "kernels":
+                    param_name = join_delimiter.join(param_name[2:])
+                else:
+                    del param_name[0]
+                    param_name = join_delimiter.join(param_name)
+                kernel[param_name] = covar_module_params.get(key)
+
+        # Extracting likelihood parameters
+        if "likelihood_parameters" in estimator_diagnostics.keys():
+            likelihood_params = estimator_diagnostics["likelihood_parameters"]
+            for key in likelihood_params.keys():
+                param_name = key.split(".")
+                # Shorten names differently for heteroskedastic noise model and other models
+                if len(param_name) < 5:
+                    param_name = join_delimiter.join(param_name[2:])
+                else:
+                    param_name = join_delimiter.join(param_name[3:])
+                if (
+                    param_name[0] == "_"
+                ):  # To avoid double underscores for some likelihood parameters
+                    likelihood["noise_model" + param_name] = likelihood_params.get(key)
+                else:
+                    likelihood["noise_model_" + param_name] = likelihood_params.get(key)
+        return {
+            "properties": properties,
+            "mean": mean,
+            "kernel": kernel,
+            "likelihood": likelihood,
+        }

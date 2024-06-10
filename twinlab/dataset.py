@@ -23,6 +23,9 @@ DEPRECATION_MESSAGE = (
 class Dataset:
     """A twinLab dataset that can be used for training an emulator online.
 
+    Note that instantiating a dataset object locally does not create a new dataset on the twinLab cloud.
+    Instead, it can be used either to interact with an existing dataset that has been uploaded to the cloud or as a precursor step to uploading a new dataset.
+
     Args:
         id (str): Name of the dataset.
 
@@ -91,7 +94,12 @@ class Dataset:
         columns: List[str],
         verbose: bool = False,
     ) -> pd.DataFrame:
-        """Return an analysis of the variance retained per dimension.
+        """Return an analysis of the variance retained per dimension after performing singular value decomposition (SVD) on the dataset.
+
+        SVD is useful for understanding how much variance in the dataset is retained after projecting it into a new basis.
+        SVD components are naturally ordered by the amount of variance they retain, with the first component retaining the most variance.
+        A decision can be made about how many dimensions to keep based on the cumulative variance retained.
+        This analysis is usually performed on either the set of input or output columns of the dataset.
 
         Args:
             columns (list[str]): List of columns to evaluate. This is typically either the set of input or output columns.

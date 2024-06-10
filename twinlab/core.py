@@ -131,7 +131,8 @@ def user_information(verbose: bool = False) -> Dict:
 
     """
     _, response = api.get_user(verbose=DEBUG)
-    user_info = response
+    user_info = {}
+    user_info["User"] = response.get("username")
     if verbose:
         print("User information:")
         pprint(user_info, compact=True, sort_dicts=False)
@@ -229,36 +230,45 @@ def list_emulators(
 
     # Get the emulators dictionary from the response
     _, response = api.list_models(verbose=DEBUG)
-    emulators = utils.get_value_from_body("model_information", response)
-    emulator_list = utils.get_value_from_body("models", response)
+    emulators = utils.get_value_from_body("models", response)
 
-    # Create dictionary of cuddly response
-    status_dict = {
-        "success": "Successfully trained emulators:",
-        "in_progress": "Emulators currently training:",
-        "failed": "Emulators that failed to train:",
-        "no_logging": "Emualtors trained prior to logging:",
-    }
-
+    # Print detailed emulator information to screen
     if verbose:
 
-        for status in status_dict.keys():
+        # Create dictionary of cuddly status messages
+        status_messages = {
+            "success": "Successfully trained emulators:",
+            "in progress": "Emulators currently training:",  # NOTE: No underscore here
+            "failed": "Emulators that failed to train:",
+            "no_logging": "Emulators trained prior to logging:",  # NOTE: Underscore here
+            "?": "Emulators with unknown status:",
+        }
 
-            emus = []
-            for i in emulators:
-                if i.get("status") == status:
-                    i.pop("status", None)
-                    emus.append(i)
+        # Get the detailed model information and sort by "start_time"
+        # NOTE: Ensure that "start_time" is present in the dictionary
+        emulator_info = utils.get_value_from_body("model_information", response)
+        for emulator in emulator_info:
+            if not emulator.get("start_time"):
+                emulator["start_time"] = "N/A"
+        emulator_info = sorted(emulator_info, key=lambda d: d["start_time"])
 
-            if status != "no_logging":
-                emus = sorted(emus, key=lambda d: d["start_time"])
+        # Sort emulators by status
+        status_emulators = {status: [] for status in status_messages.keys()}
+        for emulator in emulator_info:
+            status = emulator.pop("status", None)
+            if status in status_messages.keys():
+                status_emulators[status].append(emulator)
+            else:
+                status_emulators["?"].append(emulator)
 
-            if emus:
-                print(status_dict[status])
-                pprint(emus)
-                print("\n")
+        # Print to screen
+        for status, message in status_messages.items():
+            if status_emulators[status]:
+                print(message)
+                pprint(status_emulators[status], compact=True, sort_dicts=False)
+                print()
 
-    return emulator_list
+    return emulators
 
 
 @typechecked

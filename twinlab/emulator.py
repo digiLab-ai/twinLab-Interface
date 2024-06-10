@@ -214,11 +214,14 @@ class Emulator:
     In this way, it learns to mimic, or emulate, the dataset and can be used to make predictions on new data.
     Emulators are also often called models, surrogates, or digital twins.
 
+    Note that instantiating an emulator locally does not create a new emulator on the twinLab cloud.
+    Instead, it can be used either to interact with an existing emulator that has previously been trained, or as a precursor step to training a new emulator.
+
     Attributes:
         id (str): The name for the emulator in the twinLab cloud.
-            If an emulator that does not currently exist is specified, then a new emulator will be instantiated.
+            If an emulator is specified that does not currently exist, then a new emulator will be instantiated.
             Otherwise the corresponding emulator will be loaded from the cloud.
-            Be sure to double check which emulators have been created using .. autofunction:: `~list_emulator`.
+            Be sure to double check which emulators have been created using ``tl.list_emulators``.
     """
 
     @typechecked
@@ -298,7 +301,7 @@ class Emulator:
         outputs: List[str],
         params: TrainParams = TrainParams(),
         wait: bool = True,
-        verbose: bool = False,
+        verbose: bool = True,
     ) -> Optional[str]:
         """Train an emulator on the twinLab cloud.
 
@@ -323,7 +326,8 @@ class Emulator:
                 These are usually known as ``y`` values.
             params (TrainParams, optional): A training parameter configuration that contains all optional training parameters.
             wait (bool, optional): If ``True`` wait for the job to complete, otherwise return the process ID and exit.
-                Setting ``wait=False`` is useful for longer training jobs.
+                Setting ``wait=False`` is useful for running longer training jobs.
+                The status of all emulators, including those currently training, can be queried using ``tl.list_emulators(verbose=True)``.
             verbose (bool, optional): Display information about the operation while running.
 
         Returns:
@@ -657,12 +661,32 @@ class Emulator:
             return df
 
     @typechecked
-    def summarise(self, verbose: bool = False) -> dict:
+    def summarise(self, detailed: bool = False, verbose: bool = False) -> dict:
         """Get a summary of a trained emulator on the twinLab cloud.
 
         This summary returns transformer diagnostics, with details about the input/output decomposition.
         It also returns the estimator diagnostics, detailing properties of the trained emulator.
+        The estimator diagnostics includes information about the kernel, likelihood, mean modules and some additional properties of the emulator.
         This information can help inform a user about the makeup of an emulator -- for example, what kind of kernel was used.
+        The summary contains the information about the following components of an emulator.
+
+        +----------------------------+----------------------------------------------------------------------------------+
+        |           Kernel           | Details about the structure of the kernel used, kernel lengthscale priors,       |
+        |                            | kernel lengthscale bounds, etc.                                                  |
+        +----------------------------+----------------------------------------------------------------------------------+
+        |         Likelihood         | Details about the noise model used (could be another GP in the case of           |
+        |                            | Heteroskedastic GP), raw noise variance, etc.                                    |
+        +----------------------------+----------------------------------------------------------------------------------+
+        |            Mean            | Details about the mean function used and the raw mean constant.                  |
+        +----------------------------+----------------------------------------------------------------------------------+
+        |                            | Additional properties of the emulator like noise variance, input transform       |
+        |         Properties         | parameters, output transform parameters, properties of the variational           |
+        |                            | distribution (only in the case of Variational GPs), etc.                         |
+        +----------------------------+----------------------------------------------------------------------------------+
+
+        By default, the summary dictionary is not detailed and contains only a high-level overview of the emulator which includes information about
+        the learned hyperparameters, kernel function used and the mean function used. To view a detailed summary innvolving information about all the
+        parameters of the emulator, set the ``detailed`` parameter to ``True``.
 
         Args:
             verbose (bool, optional): Display information about the operation while running.
@@ -676,15 +700,42 @@ class Emulator:
             .. code-block:: console
 
                 {
-                    'estimator_diagnostics': ...,
-                    'transformer_diagnostics': ...,
+                    'kernel': ...,
+                    'likelihood': ...,
+                    'mean': ...,
+                    'properties': ...,
                 }
 
+            .. code-block:: python
+
+                emulator = tl.Emulator("quickstart")
+                emulator_summary = emulator.summarise()
+                kernel_info = emulator_summary.get("kernel")
+                print("Kernel function used: ", kernel_info["kernel_function_used"])
+                print("Lengthscale:", kernel_info["lengthscale"])
+
+            .. code-block:: console
+
+                Kernel function used: ScaleKernel((base_kernel): MaternKernel((lengthscale_prior): GammaPrior()
+                (raw_lengthscale_constraint): Positive())
+                (outputscale_prior): GammaPrior()  (raw_outputscale_constraint): Positive())
+
+                Lengthscale: [[0.4234508763532827]]
+
+
         """
-        # TODO: Improve the docstring once the summary has been improved
         _, response = api.summarise_model(self.id, verbose=DEBUG)
         summary = utils.get_value_from_body("model_summary", response)
         del summary["data_diagnostics"]
+        if "base_estimator_diagnostics" in summary["estimator_diagnostics"].keys():
+            base_estimator_summary = utils.reformat_summary_dict(
+                summary, detailed=detailed
+            )
+            summary["estimator_diagnostics"][
+                "base_estimator_diagnostics"
+            ] = base_estimator_summary
+        else:
+            summary = utils.reformat_summary_dict(summary, detailed=detailed)
         if verbose:
             print("Trained emulator summary:")
             pprint(summary, compact=True, sort_dicts=False)
@@ -872,7 +923,7 @@ class Emulator:
         df: pd.DataFrame,
         params: PredictParams = PredictParams(),
         wait: bool = True,
-        verbose: bool = False,
+        verbose: bool = True,
     ) -> Union[Tuple[pd.DataFrame, pd.DataFrame], str]:
         """Make predictions using a trained emulator that exists on the twinLab cloud.
 
@@ -965,7 +1016,7 @@ class Emulator:
         num_samples: int,
         params: SampleParams = SampleParams(),
         wait: bool = True,
-        verbose: bool = False,
+        verbose: bool = True,
     ) -> Union[pd.DataFrame, str]:
         """Draw samples from a trained emulator that exists on the twinLab cloud.
 
@@ -1056,7 +1107,7 @@ class Emulator:
         acq_func: str,
         params: RecommendParams = RecommendParams(),
         wait: bool = True,
-        verbose: bool = False,
+        verbose: bool = True,
     ) -> Union[Tuple[pd.DataFrame, float], str]:
         """Draw new recommended data points from a trained emulator that exists on the twinLab cloud.
 
@@ -1187,7 +1238,7 @@ class Emulator:
         df_std: pd.DataFrame,
         params: CalibrateParams = CalibrateParams(),
         wait: bool = True,
-        verbose: bool = False,
+        verbose: bool = True,
     ) -> Union[pd.DataFrame, str]:
         """Solve an inverse problem using a trained emulator on the twinLab cloud.
 
@@ -1277,7 +1328,7 @@ class Emulator:
         self,
         params: MaximizeParams = MaximizeParams(),
         wait: bool = True,
-        verbose: bool = False,
+        verbose: bool = True,
     ) -> Union[pd.DataFrame, str]:
         """Finding the maximum the output of a trained emulator that exists on the twinLab cloud.
 
@@ -1424,6 +1475,7 @@ class Emulator:
             inputs=inputs,
             outputs=outputs,
             params=train_params,
+            wait=True,
             verbose=False,
         )
 
@@ -1435,6 +1487,7 @@ class Emulator:
                 num_points=num_points_per_loop,
                 acq_func=acq_func,
                 params=recommend_params,
+                wait=True,
                 verbose=False,
             )
 
@@ -1452,6 +1505,7 @@ class Emulator:
                 inputs=inputs,
                 outputs=outputs,
                 params=train_params,
+                wait=True,
                 verbose=False,
             )
 
