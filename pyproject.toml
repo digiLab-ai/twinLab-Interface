@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "twinlab"
-version = "2.8.0"
+version = "2.9.0"
 description = "twinLab - Probabilistic Machine Learning for Engineers"
 license = "MIT"
 homepage = "https://twinlab.ai"
@@ -29,7 +29,8 @@ typeguard = "^4.0.0"
 setuptools = "^69.0.2"
 deprecated = "^1.2.14"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
+black = "^24.4.2"
 ipykernel = "^6.22.0"
 IPython = "^8.11"
 pytest = "^7.1.2"
@@ -37,12 +38,6 @@ pytest-timeout = "^2.3.1"
 pytest-cov = "^3.0.0"
 pytest-regtest = "^1.5.1"
 pytest-regressions = "^2.5.0"
-
-# NOTE: This allows for better collection of the pytests
-# NOTE: Allows tests that have the same name but in different folders
-
-[tool.poetry.group.dev.dependencies]
-black = "^24.4.2"
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"

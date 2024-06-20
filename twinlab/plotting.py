@@ -1,10 +1,9 @@
 import math
 
-from typeguard import typechecked
-
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 import pandas as pd
+from matplotlib.colors import LinearSegmentedColormap
+from typeguard import typechecked
 
 DIGILAB_COLORS = {
     "dark_blue": "#162448",
