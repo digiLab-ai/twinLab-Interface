@@ -1,16 +1,24 @@
 # Standard imports
 import os
+from enum import Enum
 
 # Third-party imports
 import dotenv
 
 # Project imports
 from ._version import __version__
+import warnings
+
+
+# Possible states of a twinLab job
+class ValidStatus(Enum):
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILURE = "failure"
 
 
 # Parameters
-# TODO: Move these into a settings.json?
-DEFAULT_TWINLAB_URL = "https://twinlab.digilab.co.uk"
+DEFAULT_TWINLAB_URL = "https://twinlab.digilab.co.uk/v3"
 CHECK_DATASETS = True  # Check datasets are sensible before uploading
 PARAMS_COERCION = {  # Convert parameter names in params dict
     "test_train_ratio": "train_test_ratio",  # Common mistake
@@ -29,20 +37,25 @@ PARAMS_COERCION = {  # Convert parameter names in params dict
 }
 
 # Load environment variables from .env, if it exists
-# NOTE: Should search from current directory upwards
+# NOTE: Should search from current directory outwards
 dotenv_path = dotenv.find_dotenv(usecwd=True)
-dotenv.load_dotenv(dotenv_path, override=True)
+# Try to load the .env file.
+try:
+    dotenv.load_dotenv(dotenv_path)
+except UnicodeDecodeError as e:
+    warnings.warn("Failed to load environment variables from .env file.")
+    print(".env location:", dotenv_path)
 
 # Set defaults if not set
 if not os.getenv("TWINLAB_URL"):
     os.environ["TWINLAB_URL"] = DEFAULT_TWINLAB_URL
-if not os.getenv("TWINLAB_API_KEY"):
-    os.environ["TWINLAB_API_KEY"] = "None"
 
 # Intro message
 print()
 print(f"          ====== TwinLab Client Initialisation ======")
 print(f"          Version     : {__version__}")
+if os.getenv("TWINLAB_USER"):
+    print(f"          User        : {os.getenv('TWINLAB_USER')}")
 print(f"          Server      : {os.getenv('TWINLAB_URL')}")
 if dotenv_path:
     print(f"          Environment : {dotenv_path}")

@@ -2,12 +2,11 @@
 
 # twinLab - Probabilistic Machine Learning for Engineers
 
-twinLab is a tool for augmenting engineering workflows with Probabilistic Machine Learning. It enables users to quickly and easily build real-time emulators of their simulations, experimental set-ups, or sensor networks. Then they can make predictions, make recommendations, perform optimisations, and calibrate physics parameters from data. 
+twinLab is a tool for augmenting engineering workflows with Probabilistic Machine Learning. It enables users to quickly and easily build real-time emulators of their simulations, experimental set-ups, or sensor networks. Then they can make predictions, make recommendations, perform optimisations, and calibrate physics parameters from data.
 
-twinLab comes with built-in uncertainty quantification (UQ), which means that even with sparse or noisy data, users can maximise their understanding of the design space and surrogate model with confidence. 
+twinLab comes with built-in uncertainty quantification (UQ), which means that even with sparse or noisy data, users can maximise their understanding of the design space and surrogate model with confidence.
 
 For help, or to arrange a trial, please email: [twinlab@digilab.co.uk](mailto:twinlab@digilab.co.uk) or fill in the contact form [here](https://www.digilab.co.uk/contact).
-
 
 ## Getting Started
 
@@ -17,21 +16,24 @@ For help, or to arrange a trial, please email: [twinlab@digilab.co.uk](mailto:tw
 pip install twinlab
 ```
 
-**Step 2**: Configure your API Key
+**Step 2**: Configure your user details
 
 If you don't yet have one, you'll need to request a trial. Please email [twinlab@digilab.co.uk](mailto:twinlab@digilab.co.uk) or fill in the contact form [here](https://www.digilab.co.uk/contact).
 
-Method 1: `tl.set_api_key`. Be careful not to publicly expose your API key if sharing files.
+Method 1: Use `tl.set_user` and `tl.set_api_key` within a script. Be careful not to publicly expose your API key if sharing files.
 
 ```python
 import twinlab as tl
-tl.set_api_key('<your_api_key>')
+
+tl.set_user("<your_username>")
+tl.set_api_key("<your_api_key>")
 ```
 
-Method 2: Create a `.env` file containing `TWINLAB_API_KEY` in your working directory, and then `import twinlab as tl` in your Python script / notebook as normal. The API key will be read from `.env` automatically.
+Method 2: Create a `.env` file containing `TWINLAB_USER` and `TWINLAB_API_KEY` in your working directory. You can then `import twinlab as tl` in your Python script / notebook as normal. The API key will be read from `.env` automatically.
 
 ```shell
-echo "TWINLAB_API_KEY=<your_api_key>" > .env
+echo "TWINLAB_USER=<your_username>" >> .env
+echo "TWINLAB_API_KEY=<your_api_key>" >> .env
 ```
 
 **Step 3**: Run an Example
@@ -39,8 +41,8 @@ echo "TWINLAB_API_KEY=<your_api_key>" > .env
 Here’s an example script to get you started:
 
 ```python
-# Import pandas as well
 import pandas as pd
+import twinlab as tl
 
 # Load an example dataset and upload to twinLab
 dataset = tl.Dataset("quickstart")

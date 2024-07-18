@@ -1,86 +1,61 @@
-import io
 import os
 from pprint import pprint
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import pandas as pd
 from typeguard import typechecked
 
-from . import api, utils
-
-# Parameters
-DEBUG = False  # NOTE: For developer debugging purposes, turn to True to see more verbosity and logging from the API
+from . import _api, _utils
+from ._utils import get_value_from_body
 
 
 @typechecked
-def set_api_key(api_key: str, verbose: bool = False) -> None:
-    """Set the user API key for their twinLab cloud account.
-
-    Setting this will override the API key set in the environment variable ``TWINLAB_API_KEY`` in the .env file for the current session.
-    This can be used instead of setting the API key in the ``.env`` file and negates the need for a ``.env`` file.
-
-    Args:
-        api_key (str): API key to use for access to the twinLab cloud.
-        verbose (bool, optional): Display information about the operation while running.
-
-    Example:
-        .. code-block:: python
-
-            tl.set_api_key("12345")
-
-    """
-    os.environ["TWINLAB_API_KEY"] = api_key
-    if verbose:
-        print("API key: {}".format(api_key))
-
-
-@typechecked
-def set_server_url(url: str, verbose: bool = False) -> None:
-    """Set the server URL for twinLab.
-
-    If this is not set the default URL is used: ``https://twinlab.digilab.co.uk``.
-    This default URL will be correct for most users and should not normally need to be changed.
-    Setting this will override the URL set in the environment variable ``TWINLAB_URL`` in the ``.env`` file for the current session.
-
-    Args:
-        url (str): URL for the twinLab cloud.
-        verbose (bool, optional): Display information about the operation while running.
-
-    Example:
-        .. code-block:: python
-
-            tl.set_server_url("https://twinlab.digilab.co.uk/stage")
-
-    """
-    os.environ["TWINLAB_URL"] = url
-    if verbose:
-        print("Server URL: {}".format(url))
-
-
-@typechecked
-def get_server_url(verbose: bool = False) -> str:
-    """Show the URL from which twinLab is currently being accessed.
+def get_user(verbose: bool = False) -> str:
+    """Show the username for the twinLab cloud account.
 
     Args:
         verbose (bool, optional): Display information about the operation while running.
 
     Returns:
-        str: Server URL.
+        str: User.
 
     Example:
         .. code-block:: python
 
-            tl.get_server_url()
+            tl.get_user()
 
         .. code-block:: console
 
-            'https://twinlab.digilab.co.uk'
+            'tim@digilab.co.uk'
 
     """
-    server_url = os.getenv("TWINLAB_URL")
+    user = os.getenv("TWINLAB_USER")
     if verbose:
-        print("Server URL: {}".format(server_url))
-    return server_url
+        print(f"User: {user}")
+    return user
+
+
+@typechecked
+def set_user(username: str, verbose: bool = False) -> None:
+    """Set the username for their twinLab cloud account.
+
+    Setting this will override the user set in the environment variable ``TWINLAB_USER`` in the ``.env`` file for the current session.
+    This function can also be used instead of setting a ``TWINLAB_USER`` in a ``.env`` file.
+    Note that a twinLab username is usually an email address.
+
+    Args:
+        username (str): Username for access to the twinLab cloud.
+        verbose (bool, optional): Display information about the operation while running.
+
+    Example:
+        .. code-block:: python
+
+            tl.set_user("tim@digilab.co.uk")
+
+    """
+    os.environ["TWINLAB_USER"] = username
+    if verbose:
+        print(f"User: {username}")
 
 
 @typechecked
@@ -105,8 +80,80 @@ def get_api_key(verbose: bool = False) -> str:
     """
     api_key = os.getenv("TWINLAB_API_KEY")
     if verbose:
-        print("API key: {}".format(api_key))
+        print(f"API key: {api_key}")
     return api_key
+
+
+@typechecked
+def set_api_key(api_key: str, verbose: bool = False) -> None:
+    """Set the user API key for their twinLab cloud account.
+
+    Setting this will override the API key set in the environment variable ``TWINLAB_API_KEY`` in the ``.env`` file for the current session.
+    This function can also be used instead of setting a ``TWINLAB_API_KEY`` in a ``.env`` file.
+
+    Args:
+        api_key (str): API key to use for access to the twinLab cloud.
+        verbose (bool, optional): Display information about the operation while running.
+
+    Example:
+        .. code-block:: python
+
+            tl.set_api_key("12345")
+
+    """
+    os.environ["TWINLAB_API_KEY"] = api_key
+    if verbose:
+        print(f"API key: {api_key}")
+
+
+@typechecked
+def get_server_url(verbose: bool = False) -> str:
+    """Show the URL from which twinLab is currently being accessed.
+
+    Args:
+        verbose (bool, optional): Display information about the operation while running.
+
+    Returns:
+        str: Server URL.
+
+    Example:
+        .. code-block:: python
+
+            tl.get_server_url()
+
+        .. code-block:: console
+
+            'https://twinlab.digilab.co.uk/v3'
+
+    """
+    url = os.getenv("TWINLAB_URL")
+    if verbose:
+        print(f"Server URL: {url}")
+    return url
+
+
+@typechecked
+def set_server_url(url: str, verbose: bool = False) -> None:
+    """Set the server URL for twinLab.
+
+    If this is not set the default URL is used: ``https://twinlab.digilab.co.uk/v3``.
+    This default URL will be correct for most users and should not normally need to be changed.
+    Setting this will override the URL set in the environment variable ``TWINLAB_URL`` in the ``.env`` file for the current session.
+
+    Args:
+        url (str): URL for the twinLab cloud.
+        verbose (bool, optional): Display information about the operation while running.
+
+    Example:
+        .. code-block:: python
+
+            # Setting the server to test a beta feature
+            tl.set_server_url("https://twinlab.digilab.co.uk/v3/beta")
+
+    """
+    os.environ["TWINLAB_URL"] = url
+    if verbose:
+        print(f"Server URL: {url}")
 
 
 @typechecked
@@ -127,10 +174,10 @@ def user_information(verbose: bool = False) -> Dict:
 
         .. code-block:: python
 
-            {'username': 'dodders@digilab.co.uk', 'credits': 850}
+            {'username': 'tim@digilab.co.uk'}
 
     """
-    _, response = api.get_user(verbose=DEBUG)
+    _, response = _api.get_user()
     user_info = {}
     user_info["User"] = response.get("username")
     if verbose:
@@ -160,7 +207,7 @@ def versions(verbose: bool = False) -> Dict[str, str]:
             {'cloud': '2.3.0', 'modal': '0.4.0', 'library': '1.7.0', 'image': 'twinlab'}
 
     """
-    _, response = api.get_versions(verbose=DEBUG)
+    _, response = _api.get_versions()
     version_info = response
     if verbose:
         print("Version information:")
@@ -192,8 +239,8 @@ def list_datasets(verbose: bool = False) -> List[str]:
             ['biscuits', 'gardening', 'force-energy', 'combusion']
 
     """
-    _, response = api.list_datasets(verbose=DEBUG)
-    datasets = utils.get_value_from_body("datasets", response)
+    _, response = _api.get_datasets()
+    datasets = get_value_from_body("datasets", response)
     if verbose:
         print("Datasets:")
         pprint(datasets, compact=True, sort_dicts=False)
@@ -228,9 +275,8 @@ def list_emulators(
 
     """
 
-    # Get the emulators dictionary from the response
-    _, response = api.list_models(verbose=DEBUG)
-    emulators = utils.get_value_from_body("models", response)
+    _, response = _api.get_emulators()
+    emulators = _utils.get_value_from_body("emulators", response)
 
     # Print detailed emulator information to screen
     if verbose:
@@ -246,7 +292,7 @@ def list_emulators(
 
         # Get the detailed model information and sort by "start_time"
         # NOTE: Ensure that "start_time" is present in the dictionary
-        emulator_info = utils.get_value_from_body("model_information", response)
+        emulator_info = _utils.get_value_from_body("emulator_status", response)
         for emulator in emulator_info:
             if not emulator.get("start_time"):
                 emulator["start_time"] = "N/A"
@@ -267,6 +313,8 @@ def list_emulators(
                 print(message)
                 pprint(status_emulators[status], compact=True, sort_dicts=False)
                 print()
+
+        print("Emulators:", emulators)
 
     return emulators
 
@@ -295,12 +343,11 @@ def list_example_datasets(verbose: bool = False) -> list:
             ['biscuits', 'gardening', 'quickstart', 'tritium-desorption']
 
     """
-    _, response = api.list_example_datasets(verbose=verbose)
-    datasets = utils.get_value_from_body("datasets", response)
+    _, response = _api.get_example_datasets()
+    datasets = get_value_from_body("datasets", response)
     if verbose:
         print("Example datasets:")
         pprint(datasets, compact=True, sort_dicts=False)
-
     return datasets
 
 
@@ -333,10 +380,8 @@ def load_example_dataset(dataset_id: str, verbose: bool = False) -> pd.DataFrame
             8  0.480932  0.340115
             9  0.392118  0.845795
     """
-    _, response = api.load_example_dataset(dataset_id, verbose=verbose)
-    csv = utils.get_value_from_body("dataset", response)
-    csv = io.StringIO(csv)
-    df = pd.read_csv(csv, sep=",")
+    _, response = _api.get_example_dataset(dataset_id)
+    df = _utils.process_dataset_response(response)
     if verbose:
         print("Example dataset:")
         print(df)

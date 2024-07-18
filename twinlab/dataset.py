@@ -9,7 +9,7 @@ from deprecated import deprecated
 from typeguard import typechecked
 
 # Project imports
-from . import api, settings, utils
+from . import _api, _utils, settings
 
 # Parameters
 DEBUG = False  # For developer debugging purposes
@@ -70,23 +70,23 @@ class Dataset:
         """
         # Upload the file (either via link or directly)
         if USE_UPLOAD_URL:
-            _, response = api.generate_upload_url(self.id, verbose=DEBUG)
-            upload_url = utils.get_value_from_body("url", response)
-            utils.upload_dataframe_to_presigned_url(
+            _, response = _api.get_dataset_upload_url(self.id)
+            upload_url = _utils.get_value_from_body("url", response)
+            _utils.upload_dataframe_to_presigned_url(
                 df,
                 upload_url,
                 verbose=verbose,
                 check=settings.CHECK_DATASETS,
             )
             if verbose:
-                print("Processing dataset")
-            _, response = api.process_uploaded_dataset(self.id, verbose=DEBUG)
+                print("Summarising dataset")
+            _, response = _api.post_dataset_summary(self.id)
         else:
-            csv_string = utils.get_csv_string(df)
-            _, response = api.upload_dataset(self.id, csv_string, verbose=DEBUG)
+            csv_string = _utils.get_csv_string(df)
+            _, response = _api.post_dataset(self.id, csv_string)
         if verbose:
-            message = utils.get_message(response)
-            print(message)
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
 
     @typechecked
     def analyse_variance(
@@ -126,19 +126,21 @@ class Dataset:
             raise ValueError(
                 "Singular value decomposition should use more than one column. Please retry with more than one input or output column."
             )
-        columns_string = ",".join(columns)
-        _, response = api.analyse_dataset(
-            self.id, columns=columns_string, verbose=DEBUG
+
+        _, response = _api.post_dataset_analysis(self.id, columns)
+
+        process_id = _utils.get_value_from_body("process_id", response)
+
+        response = _utils.wait_for_job_completion(
+            _api.get_dataset_process, self.id, process_id, verbose=verbose
         )
-        if response["dataframe"] is not None:
-            csv_string = utils.get_value_from_body("dataframe", response)
-            csv_string = io.StringIO(csv_string)
-        else:
-            df_url = utils.get_value_from_body("dataframe_url", response)
-            csv_string = utils.download_dataframe_from_presigned_url(df_url)
-            dataframe_name = utils.get_value_from_body("dataframe_name", response)
-            _, response = api.delete_temp_dataset(dataframe_name)
-        df = pd.read_csv(csv_string, index_col=0, sep=",")
+
+        response = _utils.process_result_response(response)
+
+        result = _utils.get_value_from_body("dataset_variance", response)
+
+        df = pd.read_csv(io.StringIO(result), sep=",")
+
         if verbose:
             print("Variance Analysis:")
             print(df)
@@ -214,14 +216,8 @@ class Dataset:
                 9  0.392118  0.845795
 
         """
-        _, response = api.view_dataset(self.id, verbose=DEBUG)
-        if response["dataset"] is not None:
-            csv_string = utils.get_value_from_body("dataset", response)
-            csv_string = io.StringIO(csv_string)
-        else:
-            df_url = utils.get_value_from_body("dataset_url", response)
-            csv_string = utils.download_dataframe_from_presigned_url(df_url)
-        df = pd.read_csv(csv_string, sep=",")
+        _, response = _api.get_dataset(self.id)
+        df = _utils.process_dataset_response(response)
         if verbose:
             print("Dataset:")
             print(df)
@@ -256,9 +252,9 @@ class Dataset:
                 max     0.980764   0.921553
 
         """
-        _, response = api.summarise_dataset(self.id, verbose=DEBUG)
+        _, response = _api.get_dataset_summary(self.id)
 
-        csv_string = utils.get_value_from_body("dataset_summary", response)
+        csv_string = _utils.get_value_from_body("summary", response)
         csv_string = io.StringIO(csv_string)
         df = pd.read_csv(csv_string, index_col=0, sep=",")
         if verbose:
@@ -282,8 +278,8 @@ class Dataset:
                 dataset.delete()
 
         """
-        _, response = api.delete_dataset(self.id, verbose=DEBUG)
+        _, response = _api.delete_dataset(self.id)
 
         if verbose:
-            message = utils.get_message(response)
-            print(message)
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)

@@ -1,7 +1,4 @@
-import json
-
 from typeguard import typechecked
-
 
 from .distributions import Distribution
 
@@ -21,6 +18,4 @@ class Prior:
         self.distribution = distribution
 
     def to_json(self):
-        return json.dumps(
-            {"name": self.name, "distribution": self.distribution.to_json()}
-        )
+        return {"name": self.name, "distribution": self.distribution.to_json()}

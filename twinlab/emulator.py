@@ -1,10 +1,7 @@
 # Standard imports
 import io
-import json
 import sys
-import time
 import uuid
-import warnings
 from pprint import pprint
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -15,7 +12,10 @@ import pandas as pd
 from typeguard import typechecked
 
 # Project imports
-from . import api, settings, utils
+from . import _api, _plotting, _utils, settings
+from ._plotting import DIGILAB_CMAP as digilab_cmap
+from ._plotting import DIGILAB_COLORS as digilab_colors
+from ._utils import EmulatorResultsAdapter
 from .dataset import Dataset
 from .params import (
     BenchmarkParams,
@@ -28,10 +28,8 @@ from .params import (
     ScoreParams,
     TrainParams,
 )
-from .plotting import DIGILAB_CMAP as digilab_cmap
-from .plotting import DIGILAB_COLORS as digilab_colors
-from .plotting import heatmap, plot
 from .prior import Prior
+from .settings import ValidStatus
 
 # Parameters
 ACQ_FUNC_DICT = {
@@ -51,8 +49,6 @@ ACQ_FUNC_DICT = {
 PING_TIME_INITIAL = 1.0  # Seconds
 PING_FRACTIONAL_INCREASE = 0.1
 PROCESSOR = "cpu"
-SYNC = False
-DEBUG = False
 PROCESS_MAP = {
     "score": "score",
     "get_calibration_curve": "benchmark",
@@ -71,136 +67,41 @@ ALLOWED_DATAFRAME_SIZE = 5.5 * int(
 # TODO: Should these functions all have preceeding underscores?
 
 
-@typechecked
-def _upload_large_datasets(
-    df: pd.DataFrame, csv_string: str, method_prefix: str
-) -> Optional[str]:
-    df_id = str(uuid.uuid4())
-    if sys.getsizeof(csv_string) > ALLOWED_DATAFRAME_SIZE:
-        dataset_id = method_prefix + "_data_" + df_id
-        _, response = api.generate_temp_upload_url(dataset_id, verbose=DEBUG)
-        upload_url = utils.get_value_from_body("url", response)
-        utils.upload_dataframe_to_presigned_url(
-            df,
-            upload_url,
-            check=settings.CHECK_DATASETS,
-        )
-        return dataset_id
+def _dataset_over_memory_limit(dataset_csv: str) -> pd.DataFrame:
+    if sys.getsizeof(dataset_csv) > ALLOWED_DATAFRAME_SIZE:
+        return True
     else:
-        return None
+        return False
 
 
-@typechecked
-def _retrieve_dataframe_from_response(
-    response: dict,
-    dataframe_key: Optional[str] = "dataframe",
-    dataframe_url_key: Optional[str] = "dataframe_url",
-) -> io.StringIO:
-    if response[dataframe_key] is not None:
-        csv = utils.get_value_from_body(dataframe_key, response)
-        csv = io.StringIO(csv)
+def _process_request_dataframes(
+    df: pd.DataFrame, params: dict, dataset_name: str
+) -> dict:
+
+    # Create a unique ID for the dataset
+    dataset_id = str(uuid.uuid4())
+
+    # Convert the dataframe to a CSV string
+    dataset_csv_string = _utils.get_csv_string(df)
+
+    # If the dataset is too large, upload it using a URL and pass the dataset ID in the request parameters
+    if _dataset_over_memory_limit(dataset_csv_string):
+
+        # Generate a temporary upload URL - this URL does not have the 5.5mb limit
+        _, response = _api.get_dataset_temporary_upload_url(dataset_id)
+        url = _utils.get_value_from_body("url", response)
+
+        # Upload the dataframe to the presigned URL
+        _utils.upload_dataframe_to_presigned_url(df, url, check=settings.CHECK_DATASETS)
+
+        params[f"{dataset_name}_id"] = dataset_id
+
     else:
-        data_url = utils.get_value_from_body(dataframe_url_key, response)
-        csv = utils.download_dataframe_from_presigned_url(data_url)
-    return csv
 
+        # Pass the dataset as a CSV string in the request parameters
+        params[dataset_name] = dataset_csv_string
 
-@typechecked
-def _calculate_ping_time(elapsed_time: float) -> float:
-    # This smoothly transitions between regular pinging at the initial ping time
-    # to more drawn out pinging (expoential) as time goes on
-    return PING_TIME_INITIAL + elapsed_time * PING_FRACTIONAL_INCREASE
-
-
-# TODO: Combine _wait_for_training_completion and _wait_for_job_completion
-@typechecked
-def _wait_for_training_completion(
-    model_id: str, process_id: str, verbose: bool = False
-) -> None:
-    start_time = time.time()
-    status = 202
-    while status == 202:
-        elapsed_time = time.time() - start_time  # This will be ~0 seconds initially
-        wait_time = _calculate_ping_time(elapsed_time)
-        time.sleep(wait_time)
-        status, body = api.train_response_model(
-            model_id=model_id,
-            process_id=process_id,
-            verbose=DEBUG,
-        )
-        if verbose:
-            message = _get_response_message(body)
-            print(f"Training status: {message}")
-
-
-# TODO: Combine _wait_for_training_completion and _wait_for_job_completion
-@typechecked
-def _wait_for_job_completion(
-    model_id: str, method: str, process_id: str, verbose: bool = False
-) -> Tuple[int, dict]:
-    start_time = time.time()
-    status = 202
-    while status == 202:
-        elapsed_time = time.time() - start_time  # This will be ~0 seconds initially
-        wait_time = _calculate_ping_time(elapsed_time)
-        time.sleep(wait_time)
-        status, body = api.use_response_model(
-            model_id=model_id,
-            method=method,
-            process_id=process_id,
-            verbose=DEBUG,
-        )
-        if verbose:
-            message = _get_response_message(body)
-            print(f"Job status for {PROCESS_MAP[method]}: {message}")
-    return status, body
-
-
-# TODO: This function needs streamlining, what about dict.get(key, default)?
-# TODO: All responses should return a "message", then this would not be necessary
-@typechecked
-def _get_response_message(body: dict) -> str:
-    if "message" in body:  # TODO: if/else structure needs to be streamlined
-        message = body["message"]
-    elif "process_status" in body:
-        message = body["process_status"]
-    elif (
-        "process_status:" in body
-    ):  # TODO: Note the colon; this needs to be made more robust
-        message = body["process_status:"]
-    else:
-        message = "No response message in body"
-    return message
-
-
-@typechecked
-def _process_csv(
-    csv: io.StringIO, method: str
-) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
-    if method == "predict":
-        df = pd.read_csv(csv, sep=",")
-        n = len(df.columns)
-        df_mean, df_std = df.iloc[:, : n // 2], df.iloc[:, n // 2 :]
-        df_std.columns = df_std.columns.str.removesuffix(" [std_dev]")
-        return df_mean, df_std
-    elif method == "maximize":
-        df = pd.read_csv(csv, sep=",")
-        return df
-    elif method == "sample":
-        df_result = pd.read_csv(csv, header=[0, 1], sep=",")
-        return df_result
-    elif method == "get_candidate_points":
-        df = pd.read_csv(csv, sep=",")
-        return df
-    elif method == "solve_inverse":
-        df = pd.read_csv(csv, sep=",")
-        df = df.set_index("Unnamed: 0")
-        df.index.name = None
-        if "Unnamed: 0.1" in df.columns:  # TODO: This seems like a nasty hack
-            df = df.drop("Unnamed: 0.1", axis=1)
-        return df
-    else:
-        raise ValueError(f"Method {method} not recognised")
+    return params
 
 
 ### ###
@@ -267,25 +168,24 @@ class Emulator:
         serialised_priors = [prior.to_json() for prior in priors]
 
         # Call the API function
-        _, response = api.get_initial_design(
+        _, request_response = _api.post_design(
             serialised_priors,
             params.sampling_method.to_json(),
             num_points,
             seed=params.seed,
-            verbose=verbose,
         )
-        # Get result from body of response
-        initial_design = _retrieve_dataframe_from_response(
-            response, "initial_design", "initial_design_url"
-        )
-        if (
-            "dataframe_name" in response.keys()
-            and response["dataframe_name"] is not None
-        ):
-            api.delete_temp_dataset(response["dataframe_name"])
 
-        # Convert result which is a numpy array to pandas dataframe with correct column names
-        initial_design_df = pd.read_csv(initial_design, sep=",")
+        # Get the process_id from the response body
+        process_id = _utils.get_value_from_body("process_id", request_response)
+
+        # Wait for the process to complete
+        response = _utils.wait_for_job_completion(
+            _api.get_design, process_id, verbose=verbose
+        )
+
+        initial_design_df = EmulatorResultsAdapter("design", response).adapt_result(
+            verbose=verbose
+        )
 
         if verbose:
             print("Initial design:")
@@ -352,35 +252,28 @@ class Emulator:
             print(
                 "Emulator is being trained on GPU. Inference operations must also be performed on GPU"
             )
-        train_dict = params.unpack_parameters()
-        train_dict["inputs"] = inputs
-        train_dict["outputs"] = outputs
-        train_dict["dataset_id"] = dataset.id
-        train_dict = utils.coerce_params_dict(train_dict)
-        params_str = json.dumps(train_dict)
+        emulator_params, training_params = params.unpack_parameters()
+        emulator_params["inputs"] = inputs
+        emulator_params["outputs"] = outputs
+        training_params["dataset_id"] = dataset.id
 
         # Send training request
-        _, response = api.train_request_model(
-            self.id, params_str, processor=PROCESSOR, verbose=DEBUG
+        _, request_response = _api.post_emulator(
+            self.id, emulator_params, training_params, processor=PROCESSOR
         )
         if verbose:
-            message = utils.get_message(response)
-            print(message)
-
-        # Get the process ID from the response
-        process_id = utils.get_value_from_body("process_id", response)
-        if verbose:
-            print(f"Emulator {self.id} with process ID {process_id} is training.")
+            detail = _utils.get_value_from_body("detail", request_response)
+            print(detail)
         if not wait:
-            return process_id
-        _wait_for_training_completion(self.id, process_id, verbose=verbose)
+            return self.id
+        _utils.wait_for_job_completion(
+            _api.get_emulator_status, self.id, verbose=verbose
+        )
         if verbose:
-            print(
-                f"Training of emulator {self.id} with process ID {process_id} is complete!"
-            )
+            print(f"Training of emulator {self.id} is complete!")
 
     @typechecked
-    def status(self, process_id: str, verbose: bool = False) -> dict:
+    def status(self, verbose: bool = False) -> dict:
         """Check the status of a training process on the twinLab cloud.
 
         Args:
@@ -404,11 +297,23 @@ class Emulator:
                 }
 
         """
-        _, response = api.train_response_model(self.id, process_id, verbose=DEBUG)
-        message = _get_response_message(response)
+        _, response = _api.get_emulator_status(self.id)
+        status_dict = _utils.get_value_from_body("status_detail", response)
+
+        # Convert the time stamps into a nicer format
+        if status_dict.get("start_time"):
+            status_dict["start_time"] = _utils.convert_time_format(
+                status_dict["start_time"]
+            )
+        if status_dict.get("end_time"):
+            status_dict["end_time"] = _utils.convert_time_format(
+                status_dict["end_time"]
+            )
+
         if verbose:
-            print(message)
-        return response
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
+        return status_dict
 
     @typechecked
     def view(self, verbose: bool = False) -> dict:
@@ -446,10 +351,8 @@ class Emulator:
 
         """
 
-        _, response = api.view_model(self.id, verbose=DEBUG)
-        parameters = (
-            response  # Note that the whole body of the response is the parameters
-        )
+        _, response = _api.get_emulator_parameters(self.id)
+        parameters = _utils.get_value_from_body("parameters", response)
         if verbose:
             print("Emulator parameters summary:")
             pprint(parameters, compact=True, sort_dicts=False)
@@ -484,11 +387,19 @@ class Emulator:
                 7  0.684830 -0.960764
 
         """
-        _, response = api.view_data_model(self.id, dataset_type="train", verbose=DEBUG)
-        train_csv_string = _retrieve_dataframe_from_response(
-            response, "training_data", "training_data_url"
-        )
-        df_train = pd.read_csv(train_csv_string, sep=",", index_col=0)
+        _, response = _api.get_emulator_data(self.id, dataset_type="training_data")
+
+        if response.get("dataset"):
+            csv = _utils.get_value_from_body("dataset", response)
+            csv = io.StringIO(csv)
+            df_train = pd.read_csv(csv, sep=",", index_col=0)
+        elif response["dataset_url"]:
+            url = response["dataset_url"]
+            data_json = _utils.download_dataframe_from_presigned_url(url)
+            csv = data_json["training_data"]
+            df_train = pd.read_csv(csv, sep=",", index_col=0)
+        else:
+            raise ValueError("No dataset found in the response.")
         if verbose:
             print("Training data")
             pprint(df_train)
@@ -518,11 +429,17 @@ class Emulator:
                 1  0.392118  0.845795
 
         """
-        _, response = api.view_data_model(self.id, dataset_type="test", verbose=DEBUG)
-        test_csv_string = _retrieve_dataframe_from_response(
-            response, "test_data", "test_data_url"
-        )
-        df_test = pd.read_csv(test_csv_string, sep=",", index_col=0)
+        _, response = _api.get_emulator_data(self.id, dataset_type="testing_data")
+
+        if response.get("dataset"):
+            csv = _utils.get_value_from_body("dataset", response)
+            csv = io.StringIO(csv)
+            df_test = pd.read_csv(csv, sep=",", index_col=0)
+        elif response["dataset_url"]:
+            url = response["dataset_url"]
+            data_json = _utils.download_dataframe_from_presigned_url(url)
+            csv = data_json["testing_data"]
+            df_test = pd.read_csv(csv, sep=",", index_col=0)
         if verbose:
             print("Test data")
             pprint(df_test)
@@ -549,14 +466,14 @@ class Emulator:
                 [
                     {
                         'method': 'sample',
-                        'process_id': '23346a9c',
+                        'process_id': 'sample-four-hungry-wolves',
                         'run_time': '0:00:05',
                         'start_time': '2024-04-09 17:10:12',
                         'status': 'success'
                     },
                     {
-                        'method': 'sample',
-                        'process_id': '676623b0',
+                        'method': 'predict',
+                        'process_id': 'predict-distinct-honey-milk',
                         'run_time': '0:00:04',
                         'start_time': '2024-04-09 18:45:48',
                         'status': 'success'
@@ -564,39 +481,66 @@ class Emulator:
                 ]
 
         """
-        _, response = api.list_processes_model(model_id=self.id, verbose=DEBUG)
-        processes = utils.get_value_from_body("processes", response)
+        _, response = _api.get_emulator_processes(self.id)
+        processes = _utils.get_value_from_body("processes", response)
 
         # Create dictionary of cuddly response
         status_dict = {
-            "success": "Successful processes:",
-            "in_progress": "Currently running processes:",
-            "failed": "Processes that failed to complete:",
+            ValidStatus.SUCCESS.value: "Successful processes:",
+            ValidStatus.PROCESSING.value: "Currently running processes:",
+            ValidStatus.FAILURE.value: "Processes that failed to complete:",
         }
-
-        verbose_keys = ("method", "start_time", "run_time")
 
         if verbose:
             if not processes:
                 print("No processes available for this emulator.")
+
             for status, nice_status in status_dict.items():
-                procs = [proc for proc in processes if proc["status"] == status]
-                # Sort through dictionary via success, in_progress, failed
-                procs = [
-                    dict((key, proc[key]) for key in verbose_keys) for proc in procs
-                ]
-                procs = sorted(procs, key=lambda d: d["start_time"])
-                # List models in order from starting time
-                if procs:
-                    # Only print list if there are available processes in the list
+                organized_processes = []
+                # Loop over all processes and organize them by status
+                for process in processes:
+                    if process["status"] == status:
+                        organized_processes.append(process)
+
+                for i, process in enumerate(organized_processes):
+                    process_dict = {}
+                    run_time = _utils.calculate_run_time(
+                        process["start_time"], process["end_time"]
+                    )
+
+                    # Convert the time to a nicer format
+                    process_dict["start_time"] = _utils.convert_time_format(
+                        process["start_time"]
+                    )
+                    process_dict["run_time"] = run_time
+
+                    # Get the process method
+                    # process_dict["method"] = process["process_id"].split("-")[0]
+                    process_dict["process_id"] = process["process_id"]
+
+                    organized_processes[i] = process_dict
+
+                # Sort the list to show the most recent processes first
+                organized_processes = sorted(
+                    organized_processes, key=lambda d: d["start_time"]
+                )[
+                    ::-1
+                ]  # NOTE: Why doesn't .reverse() work here?
+
+                if organized_processes:
                     print(nice_status)
-                    pprint(procs)
+                    pprint(organized_processes)
+
         return processes
 
     @typechecked
-    def get_process(
-        self, process_id: str, verbose: bool = False
-    ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
+    def get_process(self, process_id: str, verbose: bool = False) -> Union[
+        None,  # score; benchmark with no test data
+        float,  # score (with combined_score=True)
+        pd.DataFrame,  # score; benchmark; sample; calibrate; maximize
+        Tuple[pd.DataFrame, pd.DataFrame],  # predict
+        Tuple[pd.DataFrame, float],  # recommend
+    ]:
         """Get the results from a process associated with the emulator on the twinLab cloud.
 
         This allows a user to retrieve any results from processes (jobs) they have run previously.
@@ -610,7 +554,7 @@ class Emulator:
             .. code-block:: python
 
                 emulator = tl.Emulator("quickstart")
-                emulator.get_process("23346a9c")
+                emulator.get_process("sample-four-hungry-wolves")
 
             .. code-block:: console
 
@@ -623,42 +567,30 @@ class Emulator:
                 4   -0.428691  0.614687  0.157740  1.165903
 
         """
-        method = " "  # Error generated regarding "local variable referenced before asssignment" if not included
-        _, response = api.list_processes_model(model_id=self.id, verbose=DEBUG)
-        method = " "  # TODO: This is a bad way to avoid a scope error for this variable
+        # Get the status of the process
+        _, response = _api.get_emulator_process(self.id, process_id)
+        status = ValidStatus(response["status"])
 
-        for i in range(len(response["processes"])):
-            if response["processes"][i]["process_id"] == process_id:
-                method = response["processes"][i]["method"]
-        _, response = api.use_response_model(
-            model_id=self.id,
-            method=method,
-            process_id=process_id,
-            verbose=DEBUG,
-        )
-
-        csv = _retrieve_dataframe_from_response(response)
-        if method == "predict":
-            df_mean, df_std = _process_csv(csv, method)
-            if verbose:
-                print("Mean predictions:")
-                print(df_mean)
-                print("Standard deviation predictions:")
-                print(df_std)
-            return df_mean, df_std
+        if status is ValidStatus.FAILURE:
+            return f"Process {process_id} has failed to complete"
+        elif status is ValidStatus.PROCESSING:
+            return f"Process {process_id} is still running"
         else:
-            df = _process_csv(csv, method)
+
+            # Get the result of the process
+            _, response = _api.get_emulator_process(self.id, process_id)
+
+            # Process the response according to the method used
+            method = process_id.split("-")[0]
+            result = EmulatorResultsAdapter(method, response).adapt_result(
+                verbose=verbose
+            )
+            print(result)
+
             if verbose:
-                if method == "sample":
-                    print("Samples:")
-                elif method == "get_candidate_points":
-                    print("Recommended points:")
-                elif method == "solve_inverse":
-                    print("Calibration summary:")
-                else:
-                    print("Process results:")
-                print(df)
-            return df
+                print(f"Process {process_id} results:")
+                print(result)
+            return result
 
     @typechecked
     def summarise(self, detailed: bool = False, verbose: bool = False) -> dict:
@@ -724,61 +656,22 @@ class Emulator:
 
 
         """
-        _, response = api.summarise_model(self.id, verbose=DEBUG)
-        summary = utils.get_value_from_body("model_summary", response)
+        _, response = _api.get_emulator_summary(self.id)
+        summary = _utils.get_value_from_body("summary", response)
         del summary["data_diagnostics"]
         if "base_estimator_diagnostics" in summary["estimator_diagnostics"].keys():
-            base_estimator_summary = utils.reformat_summary_dict(
+            base_estimator_summary = _utils.reformat_summary_dict(
                 summary, detailed=detailed
             )
             summary["estimator_diagnostics"][
                 "base_estimator_diagnostics"
             ] = base_estimator_summary
         else:
-            summary = utils.reformat_summary_dict(summary, detailed=detailed)
+            summary = _utils.reformat_summary_dict(summary, detailed=detailed)
         if verbose:
             print("Trained emulator summary:")
             pprint(summary, compact=True, sort_dicts=False)
         return summary
-
-    @typechecked
-    def _use_method(
-        self,
-        method: str,
-        df: Optional[pd.DataFrame] = None,
-        df_std: Optional[pd.DataFrame] = None,
-        verbose: bool = False,
-        **kwargs,  # NOTE: This can be *anything*
-    ):
-        if df is not None:
-            data_csv = df.to_csv(index=False)
-        else:
-            data_csv = None
-        if df_std is not None:
-            data_std_csv = df_std.to_csv(index=False)
-        else:
-            data_std_csv = None
-        _, response = api.use_model(
-            self.id,
-            method,
-            data_csv=data_csv,
-            data_std_csv=data_std_csv,
-            **kwargs,
-            processor=PROCESSOR,
-            verbose=DEBUG,
-        )
-
-        # Check if an acq func value exists in the response
-        # If it does then also return it with the dataframe
-        if "acq_func_value" in response.keys():
-            acq_func_value = utils.get_value_from_body("acq_func_value", response)
-            return io.StringIO(output_csv), acq_func_value
-        if "dataframe" in response.keys():
-            output_csv = utils.get_value_from_body("dataframe", response)
-            return io.StringIO(output_csv)
-        else:
-            output = utils.get_value_from_body("result", response)
-            return output
 
     @typechecked
     def score(
@@ -830,24 +723,18 @@ class Emulator:
                 pd.DataFrame({'y1': [1.8], 'y2': [0.9]})
         """
 
-        score = self._use_method(
-            method="score",
-            **params.unpack_parameters(),
-            verbose=verbose,
+        _, response = _api.post_emulator_score(self.id, params.unpack_parameters())
+
+        process_id = _utils.get_value_from_body("process_id", response)
+
+        # Await the completion of the scoring process
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
         )
 
-        # Only return the score if there is test data
-        if score is not None:
-            if not params.combined_score:  # DataFrame
-                score = pd.read_csv(score, sep=",")
-            if verbose:
-                print("Emulator Score:")
-                print(score)  # Could be pd.DataFrame or float
-            return score
-        else:
-            warnings.warn(
-                "No test data was available for this emulator, so it cannot be scored."
-            )
+        score = EmulatorResultsAdapter("score", response).adapt_result(verbose=verbose)
+
+        return score
 
     @typechecked
     def benchmark(
@@ -898,24 +785,20 @@ class Emulator:
 
         """
         # TODO: Maybe include how to plot calibration curve in a docstring code snippet.
+        _, response = _api.post_emulator_benchmark(self.id, params.unpack_parameters())
 
-        csv = self._use_method(
-            method="get_calibration_curve",
-            **params.unpack_parameters(),
-            verbose=verbose,
+        process_id = _utils.get_value_from_body("process_id", response)
+
+        # Await the completion of the process
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
         )
 
-        # Only return the DataFrame if there is test data
-        if csv is not None:
-            df = pd.read_csv(csv, sep=",")
-            if verbose:
-                print("Calibration curve:")
-                pprint(df)
-            return df
-        else:
-            warnings.warn(
-                "No test data was available for this emulator, so it cannot be scored."
-            )
+        benchmark = EmulatorResultsAdapter("benchmark", response).adapt_result(
+            verbose=verbose
+        )
+
+        return benchmark
 
     @typechecked
     def predict(
@@ -970,43 +853,27 @@ class Emulator:
                 3  0.147886
 
         """
-        API_METHOD = "predict"
-        if SYNC:
-            csv = self._use_method(
-                method=API_METHOD,
-                df=df,
-                **params.unpack_parameters(),
-                verbose=verbose,
-            )
-        else:
-            data_csv = utils.get_csv_string(df)
-            dataset_id = _upload_large_datasets(df, data_csv, API_METHOD)
-            if dataset_id is not None:
-                data_csv = None
-            _, response = api.use_request_model(
-                model_id=self.id,
-                method=API_METHOD,
-                dataset_id=dataset_id,
-                data_csv=data_csv,
-                **params.unpack_parameters(),
-                processor=PROCESSOR,
-                verbose=DEBUG,
-            )
-            process_id = utils.get_value_from_body("process_id", response)
-            if verbose:
-                print(f"Job {PROCESS_MAP[API_METHOD]} process ID: {process_id}")
-            if not wait:
-                return process_id
-            _, response = _wait_for_job_completion(
-                self.id, API_METHOD, process_id, verbose=verbose
-            )
-            csv = _retrieve_dataframe_from_response(response)
-        df_mean, df_std = _process_csv(csv, API_METHOD)
+
+        unpacked_params = _process_request_dataframes(
+            df, params.unpack_parameters(), "dataset"
+        )
+        _, body = _api.post_emulator_predict(self.id, unpacked_params)
+
+        process_id = body["process_id"]
         if verbose:
-            print("Mean predictions:")
-            print(df_mean)
-            print("Standard deviation predictions:")
-            print(df_std)
+            print(f"Job predict process ID: {process_id}")
+
+        if not wait:
+            return process_id
+
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
+        )
+
+        df_mean, df_std = EmulatorResultsAdapter("predict", response).adapt_result(
+            verbose=verbose
+        )
+
         return df_mean, df_std
 
     @typechecked
@@ -1061,43 +928,25 @@ class Emulator:
                 3  0.605568  0.416630  0.713652
 
         """
-        API_METHOD = "sample"
-        if SYNC:
-            csv = self._use_method(
-                method=API_METHOD,
-                df=df,
-                num_samples=num_samples,
-                **params.unpack_parameters(),
-                verbose=verbose,
-            )
-        else:
-            data_csv = utils.get_csv_string(df)
-            dataset_id = _upload_large_datasets(df, data_csv, API_METHOD)
-            if dataset_id is not None:
-                data_csv = None
-            _, response = api.use_request_model(
-                model_id=self.id,
-                method=API_METHOD,
-                dataset_id=dataset_id,
-                data_csv=data_csv,
-                num_samples=num_samples,
-                **params.unpack_parameters(),
-                processor=PROCESSOR,
-                verbose=DEBUG,
-            )
-            process_id = utils.get_value_from_body("process_id", response)
-            if verbose:
-                print(f"Job {PROCESS_MAP[API_METHOD]} process ID: {process_id}")
-            if not wait:
-                return process_id
-            _, response = _wait_for_job_completion(
-                self.id, API_METHOD, process_id, verbose=verbose
-            )
-            csv = _retrieve_dataframe_from_response(response)
-        df = _process_csv(csv, API_METHOD)
+        unpacked_params = _process_request_dataframes(
+            df, params.unpack_parameters(), "dataset"
+        )
+        unpacked_params["num_samples"] = num_samples
+
+        _, response = _api.post_emulator_sample(self.id, unpacked_params)
+
+        process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
-            print("Samples:")
-            print(df)
+            print(f"Job sample process ID: {process_id}")
+
+        if not wait:
+            return process_id
+
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
+        )
+
+        df = EmulatorResultsAdapter("sample", response).adapt_result(verbose=verbose)
         return df
 
     @typechecked
@@ -1125,8 +974,10 @@ class Emulator:
           A classic use case for this would be a user trying to reduce overally uncertainty.
           For example, a user trying to reduce the uncertainty in the strength of a pipe across all design parameters.
 
-        The number of requested data points can be specified by the user, and if this is greater than 1 then then recommendations are all suggested at once, and are designed to be the optmial set, as a group, to achieve the user outcome.
+        The number of requested data points can be specified by the user, and if this is greater than 1 then recommendations are all suggested at simultaneously, and are designed to be the optimal set, as a group, to achieve the user outcome.
         twinLab optimises which specific acquisition function within the chosen category will be used, prioritising numerical stability based on the number of points requested.
+
+        For the ``"explore"`` functionality, generating recommendations is not supported for multi-output emulators (when ``"y"`` has more than one dimension).
 
         The value of the acquisition function is also returned to the user.
         While this is of limited value in isolation, the trend of the acquisition function value over multiple iterations of ``Recommend`` can be used to understand the performance of the emulator.
@@ -1180,7 +1031,6 @@ class Emulator:
                 0.046944751
 
         """
-        API_METHOD = "get_candidate_points"
 
         # Convert acq_func names to correct method depending on number of points requested
         if acq_func == "optimise":
@@ -1191,44 +1041,27 @@ class Emulator:
         if acq_func == "explore":
             acq_func = "qNIPV"
 
-        if SYNC:
-            csv, acq_func_value = self._use_method(
-                method=API_METHOD,
-                num_points=num_points,
-                acq_func=ACQ_FUNC_DICT[acq_func],
-                **params.unpack_parameters(),
-                verbose=verbose,
-            )
+        unpacked_params = params.unpack_parameters()
+        unpacked_params["num_points"] = num_points
+        unpacked_params["acq_func"] = ACQ_FUNC_DICT[acq_func]
 
-        else:
-            _, response = api.use_request_model(
-                model_id=self.id,
-                method=API_METHOD,
-                num_points=num_points,
-                acq_func=ACQ_FUNC_DICT[acq_func],
-                **params.unpack_parameters(),
-                processor=PROCESSOR,
-                verbose=DEBUG,
-            )
-            process_id = utils.get_value_from_body("process_id", response)
-            if verbose:
-                print(f"Job {PROCESS_MAP[API_METHOD]} process ID: {process_id}")
-            if not wait:
-                return process_id
-            _, response = _wait_for_job_completion(
-                self.id, API_METHOD, process_id, verbose=verbose
-            )
-            csv = _retrieve_dataframe_from_response(response)
-            acq_func_value = float(
-                utils.get_value_from_body("acq_func_value", response)
-            )
+        _, response = _api.post_emulator_recommend(self.id, unpacked_params)
 
-        df = _process_csv(csv, API_METHOD)
+        process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
-            print("Recommended points:")
-            print(df)
-            print("Acquisition function value:")
-            print(acq_func_value)
+            print(f"Job recommend process ID: {process_id}")
+
+        if not wait:
+            return process_id
+
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
+        )
+
+        df, acq_func_value = EmulatorResultsAdapter("recommend", response).adapt_result(
+            verbose=verbose
+        )
+
         return df, acq_func_value
 
     @typechecked
@@ -1276,51 +1109,27 @@ class Emulator:
                 x  0.496  0.013   0.471    0.521        0.0      0.0    2025.0    2538.0    1.0
 
         """
-        API_METHOD = "solve_inverse"
-        if SYNC:
-            csv = self._use_method(
-                method=API_METHOD,
-                df=df_obs,
-                df_std=df_std,
-                **params.unpack_parameters(),
-                verbose=verbose,
-            )
-            df = pd.read_csv(csv, sep=",")
-        else:
-            data_csv = utils.get_csv_string(df_obs)
-            data_std_csv = utils.get_csv_string(df_std)
-            dataset_id = _upload_large_datasets(df_obs, data_csv, API_METHOD)
-            dataset_std_id = _upload_large_datasets(
-                df_std, data_std_csv, API_METHOD + "_std"
-            )
-            if dataset_id is not None:
-                data_csv = None
-            if dataset_std_id is not None:
-                data_std_csv = None
-            _, response = api.use_request_model(
-                model_id=self.id,
-                method=API_METHOD,
-                data_csv=data_csv,
-                data_std_csv=data_std_csv,
-                dataset_id=dataset_id,
-                dataset_std_id=dataset_std_id,
-                **params.unpack_parameters(),
-                processor=PROCESSOR,
-                verbose=DEBUG,
-            )
-            process_id = utils.get_value_from_body("process_id", response)
-            if verbose:
-                print(f"Job {PROCESS_MAP[API_METHOD]} process ID: {process_id}")
-            if not wait:
-                return process_id
-            _, response = _wait_for_job_completion(
-                self.id, API_METHOD, process_id, verbose=verbose
-            )
-            csv = _retrieve_dataframe_from_response(response)
-            df = _process_csv(csv, API_METHOD)
+        unpacked_params = _process_request_dataframes(
+            df_obs, params.unpack_parameters(), "dataset_obs"
+        )
+        unpacked_params = _process_request_dataframes(
+            df_std, unpacked_params, "dataset_obs_std"
+        )
+
+        _, response = _api.post_emulator_calibrate(self.id, unpacked_params)
+
+        process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
-            print("Calibration summary:")
-            print(df)
+            print(f"Job calibrate process ID: {process_id}")
+
+        if not wait:
+            return process_id
+
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
+        )
+
+        df = EmulatorResultsAdapter("calibrate", response).adapt_result(verbose=verbose)
         return df
 
     @typechecked
@@ -1346,7 +1155,7 @@ class Emulator:
             verbose (bool, optional): Display detailed information about the operation while running.
 
         Returns:
-            Tuple[pandas.DataFrame], str: By default, a Dataframe containing the input that optimizes your emulator predictions.
+            Tuple[pandas.DataFrame], str: By default, a Dataframe containing the input that optimises your emulator predictions.
             Instead, if ``wait=False``, the process ID is returned.
             The results can then be retrieved later using ``Emulator.get_process(<process_id>)``.
             Process IDs associated with an emulator can be found using ``Emulator.list_processes()``.
@@ -1363,35 +1172,21 @@ class Emulator:
                 0  0.845942
 
         """
-        API_METHOD = "maximize"
-        if SYNC:
-            csv = self._use_method(
-                method=API_METHOD,
-                **params.unpack_parameters(),
-                verbose=verbose,
-            )
-        else:
-            _, response = api.use_request_model(
-                model_id=self.id,
-                method=API_METHOD,
-                **params.unpack_parameters(),
-                processor=PROCESSOR,
-                verbose=DEBUG,
-            )
-            process_id = utils.get_value_from_body("process_id", response)
-            if verbose:
-                print(f"Job {PROCESS_MAP[API_METHOD]} process ID: {process_id}")
-            if not wait:
-                return process_id
-            _, response = _wait_for_job_completion(
-                self.id, API_METHOD, process_id, verbose=verbose
-            )
-            csv = utils.get_value_from_body("dataframe", response)
-            csv = io.StringIO(csv)
-        df = _process_csv(csv, API_METHOD)
+        _, response = _api.post_emulator_maximize(self.id, params.unpack_parameters())
+
+        process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
-            print("Optimal input:")
-            print(df)
+            print(f"Job maximize process ID: {process_id}")
+
+        if not wait:
+            return process_id
+
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
+        )
+
+        df = EmulatorResultsAdapter("maximize", response).adapt_result(verbose=verbose)
+
         return df
 
     @typechecked
@@ -1548,10 +1343,10 @@ class Emulator:
                 emulator.delete()
 
         """
-        _, response = api.delete_model(self.id, verbose=DEBUG)
+        _, response = _api.delete_emulator(self.id)
         if verbose:
-            message = utils.get_message(response)
-            print(message)
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
 
     @typechecked
     def plot(
@@ -1562,8 +1357,10 @@ class Emulator:
         params: PredictParams = PredictParams(),
         x_lim: Optional[Tuple[float, float]] = None,
         n_points: int = 100,
-        label: str = "Emulator",
+        label: Optional[str] = "Emulator",
+        blur: bool = False,
         color: str = digilab_colors["light_blue"],
+        figsize: Tuple[float, float] = (6.4, 4.8),
         verbose: bool = False,
     ) -> plt.plot:
         """Plot the predictions from an emulator across a single dimension with one and two standard deviation bands.
@@ -1579,10 +1376,13 @@ class Emulator:
                 Note that all X variables of an emulator must either be specified as x_axis or appear as x_fixed keys.
                 To pass through "None". either leave x_fixed out or pass through an empty dictionary.
             params: (PredictParams, optional). A parameter configuration that contains optional prediction parameters.
-            x_lim (tuple[float, float], optional]: The limits of the x-axis.
+            x_lim (Union[tuple[float, float], None), optional]: The limits of the x-axis.
                 If not provided. the limits will be taken directly from the emulator.
             n_points (int, optional): The number of points to sample in the x-axis.
-            label (str, optional): The label for the line in the plot. defaults to "Emulator prediction".
+            label (Union[str, None], optional): The label for the line in the plot legend. Defaults to "Emulator".
+            blur (bool, optional): If ``True`` the emulator prediction will be blurred to visualize the uncertainty in the emulator.
+                If ``False`` the mean and one and two standard deviation bands will be plotted,
+                which encase 68% and 95% of the emulator prediction respectively.
             color (str, optional): The color of the plot. Defaults to digiLab blue.
                 Can be any valid matplotlib color (https://matplotlib.org/stable/gallery/color/named_colors.html).
             verbose (bool, optional): Display detailed information about the operation while running.
@@ -1597,25 +1397,48 @@ class Emulator:
         """
 
         # Get information about inputs/outputs from the emulator
-        _, response = api.summarise_model(self.id, verbose=DEBUG)
-        inputs = set(response["model_summary"]["data_diagnostics"]["inputs"].keys())
-        outputs = set(response["model_summary"]["data_diagnostics"]["outputs"].keys())
+        _, response = _api.get_emulator_summary(self.id)
+        inputs = set(response["summary"]["data_diagnostics"]["inputs"].keys())
+        outputs = set(response["summary"]["data_diagnostics"]["outputs"].keys())
 
         # Check function inputs
+        fixed_inputs = set(x_fixed.keys())
         if x_axis not in inputs:
-            raise ValueError(f"x_axis must be one of the Emulator inputs: {inputs}")
-        if y_axis not in outputs:
-            raise ValueError(f"y_axis must be one of the Emulator outputs: {outputs}")
-        if set([x_axis] + list(x_fixed.keys())) != inputs:
             raise ValueError(
-                f"All values {inputs} must be specified as either x_axis or x_fixed keys"
+                f"x_axis '{x_axis}' must be one of the emulator inputs: {inputs}"
+            )
+        if x_axis in fixed_inputs:
+            raise ValueError(
+                f"x_axis '{x_axis}' must not be one of the fixed emulator inputs: {fixed_inputs}"
+            )
+        if y_axis not in outputs:
+            raise ValueError(
+                f"y_axis '{y_axis}' must be one of the emulator outputs: {outputs}"
+            )
+        specified_inputs = fixed_inputs.union({x_axis})
+        if inputs != specified_inputs:
+            print(f"input columns: {inputs}")
+            print(
+                f"x_axis column: {set(x_axis)}"
+            )  # 'set' here to harmoise output in these prints
+            print(f"x_fixed columns: {fixed_inputs}")
+            if len(specified_inputs) > len(inputs):
+                error_text = (
+                    "You have specified more columns than the emulator has as inputs."
+                )
+            elif len(specified_inputs) < len(inputs):
+                error_text = "You have not specified all of the columns that the emulator has as inputs."
+            else:
+                error_text = "You have specified the wrong columns."
+            raise ValueError(
+                f"All input columns must be specified either as x_axis or in x_fixed (and not both). {error_text}"
             )
 
         # Get the range for the x-axis
         if x_lim is not None:
             xmin, xmax = x_lim
         else:
-            inputs = response["model_summary"]["data_diagnostics"]["inputs"]
+            inputs = response["summary"]["data_diagnostics"]["inputs"]
             xmin, xmax = inputs[x_axis]["min"], inputs[x_axis]["max"]
 
         # Create a dataframe on which to predict
@@ -1632,7 +1455,20 @@ class Emulator:
         )
 
         # Plot the results
-        plt = plot(x_axis, y_axis, df_X, df_mean, df_std, color=color, label=label)
+        if blur:
+            plotting_function = _plotting.blur
+        else:
+            plotting_function = _plotting.plot
+        plt = plotting_function(
+            x_axis,
+            y_axis,
+            df_X,
+            df_mean,
+            df_std,
+            color=color,
+            label=label,
+            figsize=figsize,
+        )
         return plt  # Return the plot
 
     @typechecked
@@ -1647,7 +1483,8 @@ class Emulator:
         x1_lim: Optional[Tuple[float, float]] = None,
         x2_lim: Optional[Tuple[float, float]] = None,
         n_points: int = 25,
-        cmap=digilab_cmap,
+        cmap=digilab_cmap,  # NOTE: No typehint beacause the same as matplolib cmap (string & objects)?
+        figsize: Tuple[float, float] = (6.4, 4.8),
         verbose: bool = False,
     ) -> plt.plot:
         """Plot a heatmap of the predictions from an emulator across two dimensions.
@@ -1689,24 +1526,54 @@ class Emulator:
         """
 
         # Get information about inputs/outputs from the emulator
-        _, response = api.summarise_model(self.id, verbose=DEBUG)
-        inputs = set(response["model_summary"]["data_diagnostics"]["inputs"].keys())
-        outputs = set(response["model_summary"]["data_diagnostics"]["outputs"].keys())
+        _, response = _api.get_emulator_summary(self.id)
+        inputs = set(response["summary"]["data_diagnostics"]["inputs"].keys())
+        outputs = set(response["summary"]["data_diagnostics"]["outputs"].keys())
 
         # Check function inputs
+        fixed_inputs = set(x_fixed.keys())
         if x1_axis not in inputs:
-            raise ValueError(f"x1_axis must be one of the Emulator inputs:{inputs}")
+            raise ValueError(
+                f"x1_axis '{x1_axis}' must be one of the Emulator inputs: {inputs}"
+            )
+        if x1_axis in fixed_inputs:
+            raise ValueError(
+                f"x1_axis '{x1_axis}' must not be one of the fixed emulator inputs: {fixed_inputs}"
+            )
         if x2_axis not in inputs:
-            raise ValueError(f"x2_axis must be one of the Emulator inputs: {inputs}")
+            raise ValueError(
+                f"x2_axis '{x1_axis}' must be one of the Emulator inputs: {inputs}"
+            )
+        if x2_axis in fixed_inputs:
+            raise ValueError(
+                f"x2_axis '{x2_axis}' must not be one of the fixed emulator inputs: {fixed_inputs}"
+            )
         if y_axis not in outputs:
             raise ValueError(f"y_axis must be one of the Emulator outputs: {outputs}")
-        if set([x1_axis, x2_axis] + list(x_fixed.keys())) != inputs:
+        specified_inputs = fixed_inputs.union({x1_axis, x2_axis})
+        if inputs != specified_inputs:
+            print(f"input columns: {inputs}")
+            print(
+                f"x1_axis column: {set(x1_axis)}"
+            )  # 'set' here to harmoise output in these prints
+            print(
+                f"x2_axis column: {set(x2_axis)}"
+            )  # 'set' here to harmoise output in these prints
+            print(f"x_fixed columns: {fixed_inputs}")
+            if len(specified_inputs) > len(inputs):
+                error_text = (
+                    "You have specified more columns than the emulator has as inputs."
+                )
+            elif len(specified_inputs) < len(inputs):
+                error_text = "You have not specified all of the columns that the emulator has as inputs."
+            else:
+                error_text = "You have specified the wrong columns."
             raise ValueError(
-                f"All values {inputs} must be specified as either x1_axis, x2_axis, or x_fixed keys"
+                f"All input columns must be specified either as x1_axis, x2_axis, or in x_fixed (and not both). {error_text}"
             )
 
         # Get the ranges for the x-axes
-        inputs = response["model_summary"]["data_diagnostics"]["inputs"]
+        inputs = response["summary"]["data_diagnostics"]["inputs"]
         if x1_lim is None:
             x1min, x1max = inputs[x1_axis]["min"], inputs[x1_axis]["max"]
         else:
@@ -1740,12 +1607,13 @@ class Emulator:
             raise ValueError("mean_or_std must be either 'mean' or 'std'")
 
         # Plot the results
-        plt = heatmap(
+        plt = _plotting.heatmap(
             x1_axis,
             x2_axis,
             y_axis,
             df_X,
             df,
             cmap,
+            figsize,
         )
         return plt  # Return the plot

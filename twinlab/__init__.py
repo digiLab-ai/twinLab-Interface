@@ -1,48 +1,33 @@
 # Version
-from ._version import __version__
-
-# Campaign functions
-# NOTE: Deprecated (v1)
-# Dataset functions
-# NOTE: Deprecated (v1)
-# General functions
-# NOTE: Deprecated (v1)
-from .client import (
-    active_learn_campaign,
-    delete_campaign,
-    delete_dataset,
-    get_api_key,
-    get_calibration_curve_campaign,
-    get_server_url,
-    get_user_information,
-    get_versions,
-    list_campaigns,
-    list_datasets,
-    optimise_campaign,
-    predict_campaign,
-    query_campaign,
-    query_dataset,
-    sample_campaign,
-    score_campaign,
-    set_api_key,
-    set_server_url,
-    solve_inverse_campaign,
-    train_campaign,
-    upload_dataset,
-    view_campaign,
-    view_dataset,
+from ._utils import (
+    EmulatorResultsAdapter,
+    check_dataset,
+    convert_time_format,
+    download_dataframe_from_presigned_url,
+    download_result_from_presigned_url,
+    get_csv_string,
+    get_message,
+    get_value_from_body,
+    process_dataset_response,
+    process_result_response,
+    remove_none_values,
+    upload_dataframe_to_presigned_url,
+    upload_file_to_presigned_url,
 )
+from ._version import __version__
 
 # General functions
 from .core import (
     get_api_key,
     get_server_url,
+    get_user,
     list_datasets,
     list_emulators,
     list_example_datasets,
     load_example_dataset,
     set_api_key,
     set_server_url,
+    set_user,
     user_information,
     versions,
 )
@@ -58,8 +43,8 @@ from .params import (
     CalibrateParams,
     DesignParams,
     EstimatorParams,
-    ModelSelectionParams,
     MaximizeParams,
+    ModelSelectionParams,
     OptimiserParams,
     PredictParams,
     RecommendParams,
@@ -73,3 +58,4 @@ from .prior import Prior
 
 # Sampling methods
 from .sampling import Sampling
+from .settings import ValidStatus

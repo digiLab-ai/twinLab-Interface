@@ -1,18 +1,13 @@
-# Standard imports
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 import pandas as pd
-
-# Third-party imports
 from deprecated import deprecated
 from typeguard import typechecked
 
+from ._utils import remove_none_values
 from .dataset import Dataset
 from .sampling import LatinHypercube, Sampling
-
-# Project imports
-from .utils import remove_none_values
 
 ALLOWED_ESTIMATORS = [
     "single_task_gp",
@@ -162,13 +157,7 @@ class ModelSelectionParams(Params):
             For example, a ``depth=3`` search means the resulting kernel may be composed from up-to three base kernels,
             so examples of allowed kernel combinations would be ``"(LIN+PER)*RBF"`` or ``"(M12*RBF)+RQF"``.
             The default value is ``1``, which simply compares all kernel functions individually.
-        beam (Union[int, None], optional): Specifies the beam width of the compositional kernel search algorithm.
-            This uses a beam search algorithm to find the best kernel combination.
-            This is a heuristic search algorithm that explores a graph by expanding the most promising nodes in a limited set.
-            A ``beam=1`` search is exhaustive, which is algorithmically 'greedy'.
-            ``beam=None`` instead performs a breadth-first search.
-            ``beam > 1`` performs a beam search with the specified beam value.
-            The default value is ``None``.
+            The maximum depth is ``3``.
     """
 
     # TODO: This docstring needs to be massively improved!
@@ -180,7 +169,7 @@ class ModelSelectionParams(Params):
         val_ratio: float = 0.2,
         base_kernels: Union[str, Set[str]] = "restricted",
         depth: int = 1,
-        beam: Optional[int] = None,
+        beam: int = 2,
     ):
         self.seed = seed
         self.evaluation_metric = evaluation_metric
@@ -304,10 +293,10 @@ class TrainParams(Params):
 
     def unpack_parameters(self):
         # TODO: params from above -> kwargs here?
-        setup_params = {  # Pass to the campaign in the library
+        emulator_params = {  # Pass to the campaign in the library
             "fidelity": self.fidelity,
             "estimator": self.estimator,
-            "estimator_kwargs": self.estimator_params.unpack_parameters(),
+            "estimator_params": self.estimator_params.unpack_parameters(),
             "decompose_inputs": self.decompose_inputs,
             "decompose_outputs": self.decompose_outputs,
             "input_explained_variance": self.input_explained_variance,
@@ -315,19 +304,19 @@ class TrainParams(Params):
             "output_explained_variance": self.output_explained_variance,
             "output_retained_dimensions": self.output_retained_dimensions,
         }
-        setup_params = remove_none_values(setup_params)
-        train_params = {  # Pass to campaign.fit() in the library
+        emulator_params = remove_none_values(emulator_params)
+        training_params = {  # Pass to campaign.fit() in the library
             "train_test_ratio": self.train_test_ratio,
             "model_selection": self.model_selection,
             "model_selection_kwargs": self.model_selection_params.unpack_parameters(),
             "shuffle": self.shuffle,
             "seed": self.seed,
         }
-        train_params = remove_none_values(train_params)
+        training_params = remove_none_values(training_params)
         if self.dataset_std is not None:
-            train_params["dataset_std_id"] = self.dataset_std.id
-        params = {**setup_params, **train_params}
-        return params
+            training_params["dataset_std_id"] = self.dataset_std.id
+
+        return emulator_params, training_params
 
 
 @typechecked
@@ -392,18 +381,18 @@ class BenchmarkParams(Params):
 
             The default is ``"quantile"``.
 
-        For example, for a well calibrated emulator one would expect to have 10 percent of the unseen datapoints (from the test set) to be outside of the emulator's 90 percent confidence bound.
-        If a given confidence interval contains less than expected amount of data the model is underconfident, whereas if it contains more then it is overconfident.
-        The calibration curve is necessarily equal to ``0`` and ``1`` at the beginning and end respectively, as the fraction of data within the entire confidence interval must be between 0 and 1.
-        Curves are also necessarily monotonically increasing.
-        Convex calibration curves (those below the line ``y = x``) indicate that the model is underconfident,
-        while concave calibration curves (those above the line ``y = x``) indicate that the model is overconfident.
-        It is possible for a curve to be both above and below the line ``y = x``, indicating regions of under- and overconfidence, and possible non-Gaussianity in the data.
+            For example, for a well calibrated emulator one would expect to have 10 percent of the unseen datapoints (from the test set) to be outside of the emulator's 90 percent confidence bound.
+            If a given confidence interval contains less than expected amount of data the model is underconfident, whereas if it contains more then it is overconfident.
+            The calibration curve is necessarily equal to ``0`` and ``1`` at the beginning and end respectively, as the fraction of data within the entire confidence interval must be between 0 and 1.
+            Curves are also necessarily monotonically increasing.
+            Convex calibration curves (those below the line ``y = x``) indicate that the model is underconfident,
+            while concave calibration curves (those above the line ``y = x``) indicate that the model is overconfident.
+            It is possible for a curve to be both above and below the line ``y = x``, indicating regions of under- and overconfidence, and possible non-Gaussianity in the data.
 
-        If ``type = "quantile"`` then the calibration curve is calculated over statistical quantiles extending from negative infinity to positive infinity.
+            If ``type = "quantile"`` then the calibration curve is calculated over statistical quantiles extending from negative infinity to positive infinity.
 
-        If ``type = "interval"`` then the calibration curve is calculated over confidence intervals,
-        starting from the mean of the distribution and extending outwards in both directions simultaneously until the entire confidence interval is covered at negative/positive infinity.
+            If ``type = "interval"`` then the calibration curve is calculated over confidence intervals,
+            starting from the mean of the distribution and extending outwards in both directions simultaneously until the entire confidence interval is covered at negative/positive infinity.
 
     """
 
@@ -439,7 +428,7 @@ class PredictParams(Params):
         self.observation_noise = observation_noise
 
     def unpack_parameters(self):
-        params = {"kwargs": {"observation_noise": self.observation_noise}}
+        params = {"observation_noise": self.observation_noise}
         return params
 
 
@@ -476,17 +465,13 @@ class SampleParams(Params):
 
     def unpack_parameters(self):
         params = {
-            "kwargs": {
-                "seed": self.seed,
-                "observation_noise": self.observation_noise,
-                "fidelity": self.fidelity,
-            }
+            "seed": self.seed,
+            "observation_noise": self.observation_noise,
+            "fidelity": self.fidelity,
         }
         params = remove_none_values(params)
-        if "fidelity" in params["kwargs"]:
-            params["kwargs"]["fidelity"] = _convert_dataframe_to_dict(
-                params["kwargs"], "fidelity"
-            )
+        if "fidelity" in params:
+            params["fidelity"] = _convert_dataframe_to_dict(params, "fidelity")
         return params
 
 
@@ -531,7 +516,7 @@ class RecommendParams(Params):
             The default value is ``5``.
         raw_samples (int, optional): The number of samples for initialization.
             The default value is ``128``.
-        bounds (Union[Tuple, None], optional): The bounds of the input space.
+        bounds (Union[dict, None], optional): The bounds of the input space.
             If this is set to `None` then the bounds are inferred from the range of the training data.
             Otherwise, this must be a dictionary mapping column names to a tuple of lower and upper bounds.
             For example, ``{"x0": (0, 1), "x1": (0, 2)}`` to set boundaries on two input variables ``x0`` and ``x1``.
@@ -564,22 +549,16 @@ class RecommendParams(Params):
             )
 
     def unpack_parameters(self):
-        acq_kwargs = {"weights": self.weights, "mc_points": self.mc_points}
-        opt_kwargs = {
+        params = {
+            "weights": self.weights,
+            "mc_points": self.mc_points,
             "num_restarts": self.num_restarts,
             "raw_samples": self.raw_samples,
             "bounds": self.bounds,
+            "seed": self.seed,
         }
-        if "bounds" in opt_kwargs and opt_kwargs["bounds"] is not None:
-            opt_kwargs["bounds"] = _convert_dataframe_to_dict(opt_kwargs, "bounds")
-        params = {
-            "acq_kwargs": acq_kwargs,
-            "opt_kwargs": opt_kwargs,
-            "kwargs": {
-                "return_acq_func_value": True,  # This is fixed to be true here!
-                "seed": self.seed,
-            },
-        }
+        if params.get("bounds", None) is not None:
+            params["bounds"] = _convert_dataframe_to_dict(params, "bounds")
         params = remove_none_values(params)
         return params
 
@@ -643,12 +622,10 @@ class CalibrateParams(Params):
             # "method": self.method,
             # "prior": self.prior,
             "return_summary": self.return_summary,
-            "kwargs": {
-                "iterations": self.iterations,
-                "n_chains": self.n_chains,
-                "force_sequential": self.force_sequential,
-                "seed": self.seed,
-            },
+            "iterations": self.iterations,
+            "n_chains": self.n_chains,
+            "force_sequential": self.force_sequential,
+            "seed": self.seed,
         }
         params = remove_none_values(params)
         if (
@@ -666,8 +643,8 @@ class DesignParams:
         sampling_method (Sampling, optional): The sampling method to use for the initial design.
             Options are either:
 
-            • ``tl.LatinHypercube``: Populate the initial design space in a clever way such that each dimension, and projection of dimensions, are sampled evenly.
-            • ``tl.UniformRandom``: Randomly populate the input space, which is usually a bad idea.
+            • ``tl.sampling.LatinHypercube``: Populate the initial design space in a clever way such that each dimension, and projection of dimensions, are sampled evenly.
+            • ``tl.sampling.UniformRandom``: Randomly populate the input space, which is usually a bad idea.
 
         seed (Union[int, None], optional): The seed used to initialise the random number generators for reproducibility.
             Setting this to an integer is good for creating reproducibile design configurations.
