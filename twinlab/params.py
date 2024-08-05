@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple, Union
+import warnings
 
 import pandas as pd
 from deprecated import deprecated
@@ -9,45 +10,8 @@ from ._utils import remove_none_values
 from .dataset import Dataset
 from .sampling import LatinHypercube, Sampling
 
-ALLOWED_ESTIMATORS = [
-    "single_task_gp",
-    "fixed_noise_gp",
-    "heteroskedastic_gp",
-    "variational_gp",
-    "multi_fidelity_gp",
-    "fixed_noise_multi_fidelity_gp",
-    "mixed_single_task_gp",
-]
-
-ESTIMATORS_WITHOUT_COVAR_MODULE = [
-    "heteroskedastic_gp",
-    "multi_fidelity_gp",
-    "fixed_noise_multi_fidelity_gp",
-    "mixed_single_task_gp",
-]
 
 DEFAULT_SEED = 42
-
-
-def _check_estimator_type(estimator_type: str):
-    # NOTE: This is necessary because the library defaults to `single_task_gp` if the estimator_type is not provided or wrong!
-    if estimator_type not in ALLOWED_ESTIMATORS:
-        raise ValueError(
-            f"Estimator type {estimator_type} not recognised. Please choose from {ALLOWED_ESTIMATORS}."
-        )
-
-
-def _check_estimator_type_and_covar_module(
-    estimator_type: str, covar_module: Optional[str]
-):
-    # Logic to avoid sending the covar_module arg to the library for estimators that do not take it as an argument
-    # TODO: This should be moved to the library level?
-    if (estimator_type in ESTIMATORS_WITHOUT_COVAR_MODULE) and (
-        covar_module is not None
-    ):
-        raise ValueError(
-            f"The parameter covar_module cannot be set for the estimator {estimator_type}."
-        )
 
 
 # Logic to convert a DataFrame to a dictionary to allow serialisation
@@ -74,27 +38,42 @@ class EstimatorParams(Params):
     Attributes:
         detrend (bool, optional): Should the linear trend in the data be removed (detrended) before training the emulator?
             The defaults is ``False``.
-        covar_module (Union[str, None], optional): Specifies the functions that build up the kernel (covariance matrix) of the Gaussian Process.
+        kernel (Union[str, None], optional): Specifies the functions that build up the kernel (covariance matrix) of the Gaussian Process.
             The default is ``None``, which means the library will use a default kernel, which is a scaled Matern 5/2.
             This can be chosen from a list of possible kernels:
 
             - ``"LIN"``: Linear.
-            - ``"M12"``: Matern 1/2. A standard kernel for modelling data with a smooth trend
-            - ``"M32"``: Matern 3/2. A standard kernel for modelling data with a smooth trend.
-            - ``"M52"``: Matern 5/2. A standard kernel for modelling data with a smooth trend.
-            - ``"PER"``: Periodic. Good for modelling data that has a periodic structure.
-            - ``"RBF"``: Radial Basis Function. A standard kernel for modelling data with a smooth trend.
+            - ``"M12"``: Matern 1/2. A standard kernel for capturing data with a smooth trend
+            - ``"M32"``: Matern 3/2. A standard kernel for capturing data with a smooth trend.
+            - ``"M52"``: Matern 5/2. A standard kernel for capturing data with a smooth trend.
+            - ``"PER"``: Periodic. Good for capturing data that has a periodic structure.
+            - ``"RBF"``: Radial Basis Function. A standard kernel for capturing data with a smooth trend.
               A good default choice that can model smooth functions.
             - ``"RQF"``: Rational Quadratic Function.
 
             Kernels can also be composed by using combinations of the ``"+"`` (addative) and ``"*"`` (multiplicative) operators.
-            For example, ``covar_module = "(M52*PER)+RQF"`` is valid.
+            For example, ``kernel = "(M52*PER)+RQF"`` is valid.
+
+            Kernel Composition:
+                The kernel parameter allows for the composition of different kernels to better capture complex systems where you have prior knowledge of trends in your data.
+                Composition is achieved through the use of ``"+"`` and ``"*"`` operators, which represent additive and multiplicative compositions, respectively.
+
+                - Additive Composition (``"+"``): Combining kernels using the ``"+"`` operator allows the emulator to capture patterns that are present in the sum of the features represented by the individual kernels.
+                For instance, if one kernel captures a linear trend and another captures periodicity, using ``"+"`` would enable the emulator to capture both linear and periodic trends in the data.
+
+                - Multiplicative Composition (``"*"``): The ``"*"`` operator combines kernels in a way that the resulting kernel captures interactions between the features represented by the individual kernels.
+                This is useful for capturing complex patterns that arise from the interaction of simpler ones. For example, the kernel expression ``LIN*LIN`` would capture a quadratic trend in the data.
+
+                Parentheses can be used to control the order of operations in kernel composition, similar to arithmetic expressions.
+
+                It's important to carefully consider the choice of kernels as improperly chosen kernels or compositions may lead to poor emulator performance.
+
         estimator_type (str, optional): Specifies the type of Gaussian process to use for the emulator.
             The default is ``"single_task_gp"``, but the value can be chosen from the following list:
 
             - ``"single_task_gp"``: The standard Gaussian Process, which learns a mean, covariance, and noise level.
             - ``"fixed_noise_gp"``: A Gaussian Process with fixed noise, which is specified by the user.
-              Particularly useful for modelling noise-free simulated data where the noise can be set to zero manually.
+              Particularly useful for capturing noise-free simulated data where the noise can be set to zero manually.
             - ``"heteroskedastic_gp"``: A Gaussian Process with fixed noise that is allowed to vary with the input.
               The noise is specified by the user, and is also learned by the Process.
             - ``"variational_gp"``: An approximate Gaussian Process that is more efficient to train with large datasets.
@@ -102,24 +81,34 @@ class EstimatorParams(Params):
             - ``"multi_fidelity_gp"``:  A Gaussian Process that works with input data that has multiple levels of fidelity.
               For example, combined data from both a high- and low-resolution simulation.
             - ``"fixed_noise_multi_fidelity_gp"``: A Gaussian Process that works with input data that has multiple levels of fidelity and fixed noise.
+            - ``"mixture_of_experts_gp"``: A Gaussian Process that trains multiple GP experts for different given regions in the input space. This can improve the flexibility and adaptation of the overall function to the patterns of data in specific areas.
+            - ``"classification_gp"``: A Gaussian Process model that is trained to classify data into two classes.
+            - ``"zero_noise_gp"``: A Gaussian Process model that is trained with zero noise.
     """
 
     def __init__(
         self,
         detrend: bool = False,
         covar_module: Optional[str] = None,
+        kernel: Optional[str] = None,
         estimator_type: str = "single_task_gp",
     ):
+
+        if covar_module:
+            warnings.warn(
+                "The `covar_module` parameter is deprecated and will be removed in a future release. Please use the `kernel` parameter instead.",
+                DeprecationWarning,
+            )
+            kernel = covar_module
+
         self.detrend = detrend
-        self.covar_module = covar_module
+        self.kernel = kernel
         self.estimator_type = estimator_type
-        _check_estimator_type(self.estimator_type)
-        _check_estimator_type_and_covar_module(self.estimator_type, self.covar_module)
 
     def unpack_parameters(self):
         params = {
             "detrend": self.detrend,
-            "covar_module": self.covar_module,
+            "kernel": self.kernel,
             "estimator_type": self.estimator_type,
         }
         params = remove_none_values(params)
@@ -204,14 +193,16 @@ class TrainParams(Params):
             Currently only "gaussian_process_regression" is supported, which is the default value.
         estimator_params (EstimatorParams, optional): The parameters for the Gaussian Process emulator.
         input_retained_dimensions (Union[int, None], optional): The number of input dimensions to retain after applying dimensional reduction.
-            Setting this to an integer cannot be done at the same time as specifying the ``input_explained_variance``.
+            Setting this cannot be done at the same time as specifying the ``input_explained_variance``.
+            The maximum number of input dimensions currently allowed by twinLab is 20.
             The default value is ``None``, which means that dimensional reduction is not applied to the input unless ``input_explained_variance`` is specified.
         input_explained_variance (Union[float, None], optional): Specifies what fraction of the variance of the input data is retained after applying dimensional reduction.
             This must be a number between 0 and 1.
             This cannot be specified at the same time as ``input_retained_dimensions``.
             The default value is ``None``, which means that dimensional reduction is not applied to the input unless ``input_retained_dimensions`` is specified.
         output_retained_dimensions (Union[int, None], optional): The number of output dimensions to retain after applying dimensional reduction.
-            Setting this to an integer cannot be done at the same time as specifying the ``output_explained_variance``.
+            Setting this cannot be done at the same time as specifying the ``output_explained_variance``.
+            The maximum number of output dimensions currently allowed by twinLab is 10.
             The default value is ``None``, which means that dimensional reduction is not applied to the output unless ``output_explained_variance`` is specified.
         output_explained_variance (Union[float, None], optional): Specifies what fraction of the variance of the output data is retained after applying dimensional reduction.
             This must be a number between 0 and 1.
@@ -219,6 +210,8 @@ class TrainParams(Params):
             The default value is ``None``, which means that dimensional reduction is not applied to the output unless ``output_retained_dimensions`` is specified.
         fidelity (Union[str, None], optional): Name of the column in the dataset corresponding to the fidelity parameter if a multi-fidelity model is being trained.
             The default value is ``None``, whereby fidelity information is provided. Fidelity refers to the degree an emulator is able to reproduce the behaviour of the simulated data.
+        class_column (Union[str, None], optional): If a mixture of experts model is being trained, this is the name of the column in the dataset corresponding to the class parameter.
+            The default value is ``None``, whereby class information is provided. `mixture_of_expert_class` refers to the label that distinguishes the groups of data that the emulator is attempting to learn through specific expert models.
         train_test_ratio (Union[float, None], optional): Specifies the fraction of training samples in the dataset.
             This must be a number beteen 0 and 1.
             The default value is 1, which means that all of the provided data is used for training.
@@ -246,6 +239,7 @@ class TrainParams(Params):
         output_explained_variance: Optional[float] = None,
         output_retained_dimensions: Optional[int] = None,
         fidelity: Optional[str] = None,
+        class_column: Optional[str] = None,
         dataset_std: Optional[Dataset] = None,
         train_test_ratio: float = 1.0,
         model_selection: bool = False,
@@ -255,6 +249,7 @@ class TrainParams(Params):
     ):
         # Parameters that will be passed to the emulator on construction
         self.fidelity = fidelity
+        self.class_column = class_column
         self.estimator = estimator
         self.estimator_params = estimator_params
         self.input_explained_variance = input_explained_variance
@@ -295,6 +290,7 @@ class TrainParams(Params):
         # TODO: params from above -> kwargs here?
         emulator_params = {  # Pass to the campaign in the library
             "fidelity": self.fidelity,
+            "class_column": self.class_column,
             "estimator": self.estimator,
             "estimator_params": self.estimator_params.unpack_parameters(),
             "decompose_inputs": self.decompose_inputs,
@@ -303,6 +299,7 @@ class TrainParams(Params):
             "input_retained_dimensions": self.input_retained_dimensions,
             "output_explained_variance": self.output_explained_variance,
             "output_retained_dimensions": self.output_retained_dimensions,
+            "class_column": self.class_column,
         }
         emulator_params = remove_none_values(emulator_params)
         training_params = {  # Pass to campaign.fit() in the library
@@ -569,25 +566,25 @@ class CalibrateParams(Params):
 
     Attributes:
         y_std_model (Union[bool, pd.DataFrame], optional): Whether to include model noise covariance in the likelihood.
-
-            - If ``True`` TODO ...
-            - If ``False`` TODO ...
-            - If a `pandas.DataFrame` is supplied, it must contain the same columns as the set of emulator outputs.
-
+            If ``True``, your model's noise covariance is included in the likelihood, which can help account for uncertainties in the model predictions.
+            If ``False``, your model's noise covariance is not included in the likelihood; this assumes the model's predictions are precise.
+            If a `pandas.DataFrame` is supplied, it must contain the same columns as the set of emulator outputs, specifying the noise covariance for each output.
             The default value is ``False``.
         return_summary (bool, optional): Should the result of the inversion be presented as a summary or as the full solution?
-
-            - If ``True`` then return a summary of the inverse solution.
-            - If ``False`` return the entire solution in the form of the points sampled.
-
+            If ``True`` then return a summary of the inverse solution.
+            If ``False`` return the entire history of the points sampled.
             The default value is ``True``.
         iterations (int, optional): The number of points to sample in each inversion chain. More points is better.
             The default value is ``10,000``.
         n_chains (int, optional): The number of independent chains to use for the inversion process.
             More is better, so that the solution derived between indepent chains can be compared and convergence can be checked.
             The default value is ``2``.
-        force_sequential (bool, optional): TODO
-            The default value is False.
+        force_sequential (bool, optional): "Whether to force the chains to run sequentially, rather than in parallel."
+            If ``True`` the sampling processes will run one sample at a time, which can be useful when parallel processing is not desired.
+            The default value is ``False``.
+        start_location (str): The starting locations for the calibration process.
+            If the string ``optimized`` is provided, the starting location of all chains are taken as the maximum a posteriori (MAP) estimate.
+            If the string ``random`` is provided, the starting location for each chain is randomly generated.
         seed (Union[int, None], optional): Specifies the seed used by the random number generator to start the inversion process.
             Setting the seed to an integer is good for reproducibility.
             The default value is ``None``, which means the seed is randomly generated each time.
@@ -605,6 +602,7 @@ class CalibrateParams(Params):
         iterations: int = 10000,
         n_chains: int = 2,
         force_sequential: bool = False,
+        start_location: str = "random",
         seed: Optional[int] = None,
     ):
         self.y_std_model = y_std_model
@@ -614,6 +612,7 @@ class CalibrateParams(Params):
         self.iterations = iterations
         self.n_chains = n_chains
         self.force_sequential = force_sequential
+        self.start_location = start_location
         self.seed = seed
 
     def unpack_parameters(self):
@@ -625,6 +624,7 @@ class CalibrateParams(Params):
             "iterations": self.iterations,
             "n_chains": self.n_chains,
             "force_sequential": self.force_sequential,
+            "start_location": self.start_location,
             "seed": self.seed,
         }
         params = remove_none_values(params)

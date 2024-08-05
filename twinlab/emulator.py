@@ -237,6 +237,9 @@ class Emulator:
             The training status can then be checked later using ``Emulator.status()``.
 
         Example:
+
+            Train a simple emulator:
+
             .. code-block:: python
 
                 df = pd.DataFrame({"X": [1, 2, 3, 4], "y": [1, 4, 9, 16]})
@@ -244,6 +247,42 @@ class Emulator:
                 dataset.upload(df)
                 emulator = tl.Emulator("my_emulator")
                 emulator.train(dataset, ["X"], ["y"])
+
+            Train a emulator with dimensionality reduction (here on the output):
+
+            .. code-block:: python
+
+                dataset = tl.Dataset("my_dataset")
+                emulator = tl.Emulator("my_emulator")
+                params = tl.TrainParams(output_retained_dimensions=1)
+                emulator.train(dataset, ["X"], ["y1", "y2"], params)
+
+            Train an emulator with a specified (here variational) estimator type:
+
+            .. code-block:: python
+
+                dataset = tl.Dataset("my_dataset")
+                emulator = tl.Emulator("my_emulator")
+                params = tl.TrainParams(estimator="variational_gp")
+                emulator.train(dataset, ["X"], ["y"], params)
+
+            Train an emulator with a specific (here linear) kernel:
+
+            .. code-block:: python
+
+                dataset = tl.Dataset("my_dataset")
+                emulator = tl.Emulator("my_emulator")
+                params = tl.TrainParams(estimator_params=tl.EstimatorParams(kernel="LIN"))
+                emulator.train(dataset, ["X"], ["y"], params)
+
+            Train an emulator using automatic kernel selection to find the best kernel:
+
+            .. code-block:: python
+
+                dataset = tl.Dataset("my_dataset")
+                emulator = tl.Emulator("my_emulator")
+                params = tl.TrainParams(model_selection=True)
+                emulator.train(dataset, ["X"], ["y"], params)
 
         """
 
@@ -659,6 +698,7 @@ class Emulator:
         _, response = _api.get_emulator_summary(self.id)
         summary = _utils.get_value_from_body("summary", response)
         del summary["data_diagnostics"]
+
         if "base_estimator_diagnostics" in summary["estimator_diagnostics"].keys():
             base_estimator_summary = _utils.reformat_summary_dict(
                 summary, detailed=detailed
@@ -666,6 +706,24 @@ class Emulator:
             summary["estimator_diagnostics"][
                 "base_estimator_diagnostics"
             ] = base_estimator_summary
+
+        # If the emulator is a mixture of experts, access each expert, reformat and put them in a dictionary
+
+        elif "gp_classifier" in summary["estimator_diagnostics"].keys():
+            all_summaries = []
+            for key, value in summary["estimator_diagnostics"].items():
+                if key.startswith("gp_"):
+                    gp = {}
+                    gp["estimator_diagnostics"] = value
+                    summary = _utils.reformat_summary_dict(gp, detailed=detailed)
+                    summary = {key: summary}
+                    all_summaries.append(summary)
+
+            gp_experts_dictionary = {}
+            for summary in all_summaries:
+                gp_experts_dictionary.update(summary)
+                summary = gp_experts_dictionary
+
         else:
             summary = _utils.reformat_summary_dict(summary, detailed=detailed)
         if verbose:
@@ -1374,7 +1432,7 @@ class Emulator:
             y_axis (str): The name of the y-axis variable.
             x_fixed (dict, optional): A dictionary of fixed values for the other X variables.
                 Note that all X variables of an emulator must either be specified as x_axis or appear as x_fixed keys.
-                To pass through "None". either leave x_fixed out or pass through an empty dictionary.
+                To pass through "None", either leave x_fixed out or pass through an empty dictionary.
             params: (PredictParams, optional). A parameter configuration that contains optional prediction parameters.
             x_lim (Union[tuple[float, float], None), optional]: The limits of the x-axis.
                 If not provided. the limits will be taken directly from the emulator.

@@ -1,8 +1,7 @@
 [tool.poetry]
 name = "twinlab"
-version = "2.10.0"
+version = "2.11.0"
 description = "twinLab - Probabilistic Machine Learning for Engineers"
-license = "MIT"
 homepage = "https://twinlab.ai"
 documentation = "https://twinlab.ai"
 authors = ["digiLab Solutions Ltd. <twinlab@digilab.co.uk>"]
