@@ -195,7 +195,7 @@ class Emulator:
         params: TrainParams = TrainParams(),
         wait: bool = True,
         verbose: bool = True,
-    ) -> Optional[str]:
+    ):
         """Train an emulator on the twinLab cloud.
 
         This is the primary functionality of twinLab, whereby an emulator is trained to learn patterns from a dataset.
@@ -304,10 +304,8 @@ class Emulator:
             detail = _utils.get_value_from_body("detail", request_response)
             print(detail)
         if not wait:
-            process_id = _utils.get_value_from_body("process_id", request_response)
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_process(self.id, process_id)
-            return self.id
+            _api.get_emulator_status(self.id)
         else:
             _utils.wait_for_job_completion(
                 _api.get_emulator_status, self.id, verbose=verbose
