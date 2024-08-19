@@ -1,6 +1,6 @@
+import warnings
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple, Union
-import warnings
 
 import pandas as pd
 from deprecated import deprecated
@@ -9,9 +9,6 @@ from typeguard import typechecked
 from ._utils import remove_none_values
 from .dataset import Dataset
 from .sampling import LatinHypercube, Sampling
-
-
-DEFAULT_SEED = 42
 
 
 # Logic to convert a DataFrame to a dictionary to allow serialisation
@@ -33,12 +30,13 @@ class Params(ABC):
 
 @typechecked
 class EstimatorParams(Params):
-    """Parameter configuration for the Gaussian Process emulator (estimator).
+    """Parameter configuration for the emulator.
 
     Attributes:
         detrend (bool, optional): Should the linear trend in the data be removed (detrended) before training the emulator?
             The defaults is ``False``.
         kernel (Union[str, None], optional): Specifies the functions that build up the kernel (covariance matrix) of the Gaussian Process.
+            Previously this argument was called ``covar_module``, but this has been deprecated.
             The default is ``None``, which means the library will use a default kernel, which is a scaled Matern 5/2.
             This can be chosen from a list of possible kernels:
 
@@ -57,15 +55,12 @@ class EstimatorParams(Params):
             Kernel Composition:
                 The kernel parameter allows for the composition of different kernels to better capture complex systems where you have prior knowledge of trends in your data.
                 Composition is achieved through the use of ``"+"`` and ``"*"`` operators, which represent additive and multiplicative compositions, respectively.
-
-                - Additive Composition (``"+"``): Combining kernels using the ``"+"`` operator allows the emulator to capture patterns that are present in the sum of the features represented by the individual kernels.
+                Additive Composition (``"+"``): Combining kernels using the ``"+"`` operator allows the emulator to capture patterns that are present in the sum of the features represented by the individual kernels.
                 For instance, if one kernel captures a linear trend and another captures periodicity, using ``"+"`` would enable the emulator to capture both linear and periodic trends in the data.
-
-                - Multiplicative Composition (``"*"``): The ``"*"`` operator combines kernels in a way that the resulting kernel captures interactions between the features represented by the individual kernels.
+                Multiplicative Composition (``"*"``): The ``"*"`` operator combines kernels in a way that the resulting kernel captures interactions between the features represented by the individual kernels.
                 This is useful for capturing complex patterns that arise from the interaction of simpler ones. For example, the kernel expression ``LIN*LIN`` would capture a quadratic trend in the data.
 
                 Parentheses can be used to control the order of operations in kernel composition, similar to arithmetic expressions.
-
                 It's important to carefully consider the choice of kernels as improperly chosen kernels or compositions may lead to poor emulator performance.
 
         estimator_type (str, optional): Specifies the type of Gaussian process to use for the emulator.
@@ -80,16 +75,23 @@ class EstimatorParams(Params):
             - ``"mixed_single_task_gp"``: A Gaussian Process that works with a mix of continuous and categorical or discrete input data.
             - ``"multi_fidelity_gp"``:  A Gaussian Process that works with input data that has multiple levels of fidelity.
               For example, combined data from both a high- and low-resolution simulation.
+              Use of this model requires setting the ``fidelity`` parameter in the ``TrainParams`` class.
             - ``"fixed_noise_multi_fidelity_gp"``: A Gaussian Process that works with input data that has multiple levels of fidelity and fixed noise.
-            - ``"mixture_of_experts_gp"``: A Gaussian Process that trains multiple GP experts for different given regions in the input space. This can improve the flexibility and adaptation of the overall function to the patterns of data in specific areas.
+            - ``"mixture_of_experts_gp"``: A Gaussian Process that trains multiple experts for different regions of the input space.
+              This can improve the flexibility and adaptation of the overall function to the patterns of data in specific areas.
+              Use of this requires setting the ``class_column`` parameter in the ``TrainParams`` class.
             - ``"classification_gp"``: A Gaussian Process model that is trained to classify data into two classes.
+              Predictions from this model are binary, and the returned error is the class probability.
             - ``"zero_noise_gp"``: A Gaussian Process model that is trained with zero noise.
+
     """
 
     def __init__(
         self,
         detrend: bool = False,
-        covar_module: Optional[str] = None,
+        covar_module: Optional[
+            str
+        ] = None,  # TODO: Remove this in favour of 'kernel' with v3
         kernel: Optional[str] = None,
         estimator_type: str = "single_task_gp",
     ):
@@ -111,8 +113,7 @@ class EstimatorParams(Params):
             "kernel": self.kernel,
             "estimator_type": self.estimator_type,
         }
-        params = remove_none_values(params)
-        return params
+        return remove_none_values(params)
 
 
 @typechecked
@@ -154,11 +155,13 @@ class ModelSelectionParams(Params):
     def __init__(
         self,
         seed: Optional[int] = None,
-        evaluation_metric: str = "MSLL",
-        val_ratio: float = 0.2,
-        base_kernels: Union[str, Set[str]] = "restricted",
-        depth: int = 1,
-        beam: int = 2,
+        evaluation_metric: str = "MSLL",  # TODO: Consider depricating this in v3
+        val_ratio: float = 0.2,  # TODO: Consider depricating this in v3
+        base_kernels: Union[
+            str, Set[str]
+        ] = "restricted",  # TODO: Consider depricating this in v3
+        depth: int = 1,  # TODO: Consider depricating this in v3
+        beam: int = 2,  # TODO: Consider depricating this in v3
     ):
         self.seed = seed
         self.evaluation_metric = evaluation_metric
@@ -176,8 +179,7 @@ class ModelSelectionParams(Params):
             "depth": self.depth,
             "beam": self.beam,
         }
-        params = remove_none_values(params)
-        return params
+        return remove_none_values(params)
 
 
 @typechecked
@@ -191,7 +193,7 @@ class TrainParams(Params):
     Attributes:
         estimator (str, optional): The type of estimator (emulator) to be trained.
             Currently only "gaussian_process_regression" is supported, which is the default value.
-        estimator_params (EstimatorParams, optional): The parameters for the Gaussian Process emulator.
+        estimator_params (EstimatorParams, optional): The set of parameters for the emulator.
         input_retained_dimensions (Union[int, None], optional): The number of input dimensions to retain after applying dimensional reduction.
             Setting this cannot be done at the same time as specifying the ``input_explained_variance``.
             The maximum number of input dimensions currently allowed by twinLab is 20.
@@ -208,16 +210,18 @@ class TrainParams(Params):
             This must be a number between 0 and 1.
             This cannot be specified at the same time as ``output_retained_dimensions``.
             The default value is ``None``, which means that dimensional reduction is not applied to the output unless ``output_retained_dimensions`` is specified.
-        fidelity (Union[str, None], optional): Name of the column in the dataset corresponding to the fidelity parameter if a multi-fidelity model is being trained.
-            The default value is ``None``, whereby fidelity information is provided. Fidelity refers to the degree an emulator is able to reproduce the behaviour of the simulated data.
-        class_column (Union[str, None], optional): If a mixture of experts model is being trained, this is the name of the column in the dataset corresponding to the class parameter.
-            The default value is ``None``, whereby class information is provided. `mixture_of_expert_class` refers to the label that distinguishes the groups of data that the emulator is attempting to learn through specific expert models.
+        fidelity (Union[str, None], optional): Name of the column in the dataset corresponding to the fidelity parameter if a multi-fidelity model (``estimator_type="multi_fidelity_gp"`` in ``EstimatorParams``) is being trained.
+            Fidelity is used to differentiate the quality of individual data samples on which the emulator is being trained.
+            The default value is ``None``, because this argument is not required unless a multi-fidelity model is being trained.
+        class_column (Union[str, None], optional): The name of the column that contains the classification labels if training a mixture-of-experts model (``estimator_type="mixture_of_experts_gp"`` in EstimatorParams).
+            The classification labels distinguish different groups of data, which the emulator uses to train a set of expert models tailored to each group.
+            The default value is ``None``, because this argument is not required unless a mixture-of-experts model is being trained.
         train_test_ratio (Union[float, None], optional): Specifies the fraction of training samples in the dataset.
             This must be a number beteen 0 and 1.
             The default value is 1, which means that all of the provided data is used for training.
             This is good to make the most out of a dataset, but means that it will not be possible to score or benchmark the performance of an emulator.
         dataset_std (Union[Dataset, None], optional): A twinLab dataset object that contains the standard deviation of the training data.
-            This is necessary when training a heteroskedastic or fixed noise Gaussian Process.
+            This is necessary when training a heteroskedastic or fixed noise emulator.
         model_selection (bool, optional): Whether to run Bayesian model selection, a form of automatic machine learning.
             The default value is ``False``, which simply trains the specified emulator, rather than iterating over them.
         model_selection_params (ModelSelectionParams, optional): The parameters for model selection, if it is being used.
@@ -225,14 +229,14 @@ class TrainParams(Params):
             The default value is ``True``. Please be particularly careful while using this parameter with time-series data.
         seed (Union[int, None], optional): The seed used to initialise the random number generators for reproducibility.
             Setting to an integer is necessary for reproducible results.
-            The default value is ``42``, but it can be set to ``None`` to randomly generate the seed each time.
-            Be aware that the seed is used in the training process, so if the seed is set to ``None`` the training process will not be reproducible.
+            The default value is ``42``, which is useful for reproducibility, but it can be set to ``None`` to randomly generate the seed each time.
+            Be aware that the seed is used in the training process, so if the seed is set to ``None`` the trained emulator will not be reproducible.
 
     """
 
     def __init__(
         self,
-        estimator: str = "gaussian_process_regression",
+        estimator: str = "gaussian_process_regression",  # TODO: Remove in v3?
         estimator_params: EstimatorParams = EstimatorParams(),
         input_explained_variance: Optional[float] = None,
         input_retained_dimensions: Optional[int] = None,
@@ -245,7 +249,7 @@ class TrainParams(Params):
         model_selection: bool = False,
         model_selection_params: ModelSelectionParams = ModelSelectionParams(),
         shuffle: bool = True,
-        seed: Optional[int] = DEFAULT_SEED,
+        seed: Optional[int] = 42,  # TODO: Change to None in v3?
     ):
         # Parameters that will be passed to the emulator on construction
         self.fidelity = fidelity
@@ -309,10 +313,9 @@ class TrainParams(Params):
             "shuffle": self.shuffle,
             "seed": self.seed,
         }
-        training_params = remove_none_values(training_params)
         if self.dataset_std is not None:
             training_params["dataset_std_id"] = self.dataset_std.id
-
+        training_params = remove_none_values(training_params)
         return emulator_params, training_params
 
 
@@ -363,7 +366,7 @@ class ScoreParams(Params):
             "metric": self.metric,
             "combined_score": self.combined_score,
         }
-        return params
+        return remove_none_values(params)
 
 
 class BenchmarkParams(Params):
@@ -401,7 +404,7 @@ class BenchmarkParams(Params):
 
     def unpack_parameters(self):
         params = {"type": self.type}
-        return params
+        return remove_none_values(params)
 
 
 @typechecked
@@ -409,24 +412,33 @@ class PredictParams(Params):
     """Parameter configuration for making predictions using a trained emulator.
 
     Attributes:
-        observation_noise (bool): Whether or not to include the noise term in the standard deviation of the prediction.
-            Setting this to ``False`` can be a good idea if the training data is noisy but the underlying trend of the trained model is smooth.
-            In this case, the predictions would correspond to the underlying trend.
-            Setting this to ``True`` can be a good idea to see the spread of possible predictions including the noise.
-            This is useful to know the true uncertainty in the data-generation process, and to estimate the true span of values that might be observed next.
-            The default value is ``True``.
+        observation_noise (bool): Whether to include noise in the standard deviation of the prediction.
+        If ``True``, the inferred noise term is included in the standard deviation, accounting for the inherent randomness in the data.
+        If ``False``, the noise term is excluded, outputting only the model uncertainty due to limitations in predicting the data trend.
+        This latter uncertainty can potentially be improved by providing more training data, but may also be a limitation of the kernel used to describe the data.
+        The default value is ``True``.
+        fidelity (Union[str, None], optional): Fidelity information to be provided if the model is a multi-fidelity model (``estimator_type="multi_fidelity_gp"`` in ``EstimatorParams``).
+            This must be the name of the column in the dataset that corresponds to the fidelity parameter.
+            The default value is ``None``, which is appropriate for most trained emulators.
 
     """
+
+    # TODO: Figure out what is going on with fidelity (string/dataframe?)
 
     def __init__(
         self,
         observation_noise: bool = True,
+        fidelity: Optional[str] = None,
     ):
         self.observation_noise = observation_noise
+        self.fidelity = fidelity
 
     def unpack_parameters(self):
-        params = {"observation_noise": self.observation_noise}
-        return params
+        params = {
+            "observation_noise": self.observation_noise,
+            "fidelity": self.fidelity,
+        }
+        return remove_none_values(params)
 
 
 @typechecked
@@ -442,12 +454,13 @@ class SampleParams(Params):
             In this case, the samples would look smooth and would model the underlying trend well.
             Setting this to ``True`` can be a good idea to visualise how noisy are the samples from the emulator, which is a consequence of the noise in the observations.
             The default value is ``False``.
-        fidelity (Union[pandas.DataFrame, None], optional): Fidelity information to be provided if the model is a multi-fidelity model (``estimator_type="multi_fidelity_gp"`` in ``EstimatorParams``).
-            This must be a single column `pandas.DataFrame` with the same sample order as the dataframe of X values used to draw samples.
+        fidelity (Union[str, None], optional): Fidelity information to be provided if the model is a multi-fidelity model (``estimator_type="multi_fidelity_gp"`` in ``EstimatorParams``).
+            This must be a the name of the column in the dataset that corresponds to the fidelity parameter.
             The default value is ``None``, which is appropriate for most trained emulators.
 
     """
 
+    # TODO: Figure out what is going on with fidelity (string/dataframe?)
     # TODO: Does the fidelity parameter need to be between 0 and 1?
 
     def __init__(
@@ -466,10 +479,9 @@ class SampleParams(Params):
             "observation_noise": self.observation_noise,
             "fidelity": self.fidelity,
         }
-        params = remove_none_values(params)
-        if "fidelity" in params:
+        if "fidelity" in params:  # TODO: WTF fidelity df vs. string confusion
             params["fidelity"] = _convert_dataframe_to_dict(params, "fidelity")
-        return params
+        return remove_none_values(params)
 
 
 @deprecated(
@@ -556,8 +568,7 @@ class RecommendParams(Params):
         }
         if params.get("bounds", None) is not None:
             params["bounds"] = _convert_dataframe_to_dict(params, "bounds")
-        params = remove_none_values(params)
-        return params
+        return remove_none_values(params)
 
 
 @typechecked
@@ -595,13 +606,13 @@ class CalibrateParams(Params):
 
     def __init__(
         self,
-        y_std_model: Union[bool, pd.DataFrame] = False,
+        y_std_model: Union[bool, pd.DataFrame] = False,  # TODO: pd.DataFrame or str?
         # method: Optional[str] = "TinyDA", # TODO: Commented-out as interacts with "method" of use_model_method
         # prior: Optional[str] = "uniform", # TODO: Allow for scipy types
         return_summary: bool = True,
         iterations: int = 10000,
         n_chains: int = 2,
-        force_sequential: bool = False,
+        force_sequential: bool = False,  # TODO: Remove in v3?
         start_location: str = "random",
         seed: Optional[int] = None,
     ):
@@ -627,12 +638,11 @@ class CalibrateParams(Params):
             "start_location": self.start_location,
             "seed": self.seed,
         }
-        params = remove_none_values(params)
         if (
             "y_std_model" in params
         ):  # TODO: y_std_model is not affected by remove_none_values because default is set to False. If we change that (which seems to be the case), we need to update the API in a similar way of get_candidate_points with bounds.
             params["y_std_model"] = _convert_dataframe_to_dict(params, "y_std_model")
-        return params
+        return remove_none_values(params)
 
 
 @typechecked
@@ -690,5 +700,4 @@ class MaximizeParams(Params):
 
     def unpack_parameters(self):
         params = {"opt_weights": self.opt_weights}
-        params = remove_none_values(params)
-        return params
+        return remove_none_values(params)

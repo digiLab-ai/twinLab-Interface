@@ -177,6 +177,7 @@ def user_information(verbose: bool = False) -> Dict:
             {'username': 'tim@digilab.co.uk'}
 
     """
+    # TODO: Change function name to get_user_information (verb) in the next major release
     _, response = _api.get_user()
     user_info = {}
     user_info["User"] = response.get("username")
@@ -207,6 +208,7 @@ def versions(verbose: bool = False) -> Dict[str, str]:
             {'cloud': '2.3.0', 'modal': '0.4.0', 'library': '1.7.0', 'image': 'twinlab'}
 
     """
+    # TODO: Change function name to get_versions (verb) in the next major release
     _, response = _api.get_versions()
     version_info = response
     if verbose:
@@ -254,8 +256,6 @@ def list_emulators(
     """List trained emulators that exist in the user's twinLab cloud account.
 
     These trained emulators can be used for a variety of inference operations (see methods of the Emulator class).
-    Setting ``verbose=True`` will also show the state of currently training emulators, as well as those that have failed to train.
-    Information about start time and current/final run time will also be shown if ``verbose=True``.
 
     Args:
         verbose (bool, optional): Display information about the emulators while running.
@@ -274,48 +274,11 @@ def list_emulators(
             ['biscuits', 'gardening', 'new-emulator', 'my-emulator']
 
     """
-
     _, response = _api.get_emulators()
     emulators = _utils.get_value_from_body("emulators", response)
-
-    # Print detailed emulator information to screen
     if verbose:
-
-        # Create dictionary of cuddly status messages
-        status_messages = {
-            "success": "Successfully trained emulators:",
-            "in progress": "Emulators currently training:",  # NOTE: No underscore here
-            "failed": "Emulators that failed to train:",
-            "no_logging": "Emulators trained prior to logging:",  # NOTE: Underscore here
-            "?": "Emulators with unknown status:",
-        }
-
-        # Get the detailed model information and sort by "start_time"
-        # NOTE: Ensure that "start_time" is present in the dictionary
-        emulator_info = _utils.get_value_from_body("emulator_status", response)
-        for emulator in emulator_info:
-            if not emulator.get("start_time"):
-                emulator["start_time"] = "N/A"
-        emulator_info = sorted(emulator_info, key=lambda d: d["start_time"])
-
-        # Sort emulators by status
-        status_emulators = {status: [] for status in status_messages.keys()}
-        for emulator in emulator_info:
-            status = emulator.pop("status", None)
-            if status in status_messages.keys():
-                status_emulators[status].append(emulator)
-            else:
-                status_emulators["?"].append(emulator)
-
-        # Print to screen
-        for status, message in status_messages.items():
-            if status_emulators[status]:
-                print(message)
-                pprint(status_emulators[status], compact=True, sort_dicts=False)
-                print()
-
-        print("Emulators:", emulators)
-
+        print("Emulators:")
+        pprint(emulators, compact=True, sort_dicts=False)
     return emulators
 
 

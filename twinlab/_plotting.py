@@ -114,6 +114,8 @@ def heatmap(
     df_mean: pd.DataFrame,
     cmap=DIGILAB_CMAP,
     figsize: Tuple[float, float] = (6.4, 4.8),
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
 ) -> plt:
 
     n = int(math.sqrt(len(df_X)))
@@ -128,6 +130,8 @@ def heatmap(
         extent=extent,  # Sets axes labels according to data
         aspect=xmax / ymax,  # Correct aspect ratio
         interpolation="bicubic",  # Nice default smoothing
+        vmin=vmin,
+        vmax=vmax,
     )
     plt.xlabel(x_axis)
     plt.ylabel(y_axis)

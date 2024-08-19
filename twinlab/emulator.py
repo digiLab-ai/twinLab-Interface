@@ -1,6 +1,7 @@
 # Standard imports
 import io
 import sys
+import time
 import uuid
 from pprint import pprint
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -32,18 +33,13 @@ from .prior import Prior
 from .settings import ValidStatus
 
 # Parameters
-ACQ_FUNC_DICT = {
-    "EI": "EI",
-    "qEI": "qEI",
-    "LogEI": "LogEI",
-    "qLogEI": "qLogEI",
-    "PSD": "PSD",
-    "qNIPV": "qNIPV",
+ACQ_FUNC_DICT = {  # TODO: Delete this?
     "ExpectedImprovement": "EI",
     "qExpectedImprovement": "qEI",
     "LogExpectedImprovement": "LogEI",
     "qLogExpectedImprovement": "qLogEI",
     "PosteriorStandardDeviation": "PSD",
+    "qPosteriorStandardDeviation": "qPSD",
     "qNegIntegratedPosteriorVariance": "qNIPV",
 }
 PING_TIME_INITIAL = 1.0  # Seconds
@@ -58,13 +54,10 @@ PROCESS_MAP = {
     "solve_inverse": "calibrate",
     "maximize": "maximize",
 }
-
-ALLOWED_DATAFRAME_SIZE = 5.5 * int(
-    1e6
-)  # 5.5MB limit to stay safely (also to allow other variables and dataframes to flow through without making a fuss) within the 6MB limit for a Lambda response payload size
+NOT_WAIT_TIME = 5  # Seconds; check a job has dispatched okay
+ALLOWED_DATAFRAME_SIZE = 5.5 * int(1e6)  # Safely withing 6MB AWS limit
 
 ### Helper functions ###
-# TODO: Should these functions all have preceeding underscores?
 
 
 def _dataset_over_memory_limit(dataset_csv: str) -> pd.DataFrame:
@@ -205,15 +198,21 @@ class Emulator:
     ) -> Optional[str]:
         """Train an emulator on the twinLab cloud.
 
-        This is the primary functionality of twinLab, where an emulator is trained on a dataset.
+        This is the primary functionality of twinLab, whereby an emulator is trained to learn patterns from a dataset.
         The emulator learns trends in the dataset and then is able to make predictions on new data.
-        These new data can be far away from the training data, and the emulator will interpolate between the training data points.
+        These new data may be far away from the training data;
+        the emulator will effectively interpolate between the training data points.
         The emulator can also be used to extrapolate beyond the training data, but this is less reliable.
-        The emulator can be trained on a dataset with multiple inputs and outputs,
+
+        Emulators can be trained on datasets with multiple inputs and outputs,
         and can be used to make predictions on new data with multiple inputs and outputs.
         The powerful algorithms in twinLab allow for the emulator to not only make predictions,
         but to also quantify the uncertainty in these predictions.
         This is extremely advantageous, because it allows for the reliability of the predictions to be quantified.
+
+        See the documentation for :func:`~params.TrainParams` for more information on the available training parameters.
+        The documentation for :func:`~params.EstimatorParams` contains information about estimator types and kernels.
+        Finally, the documentation for :func:`~params.ModelSelectionParams` details automatic model selection parameters.
 
         Args:
             dataset (Dataset): The training and test data for the emulator.
@@ -263,7 +262,8 @@ class Emulator:
 
                 dataset = tl.Dataset("my_dataset")
                 emulator = tl.Emulator("my_emulator")
-                params = tl.TrainParams(estimator="variational_gp")
+                estimator_params=tl.EstimatorParams(estimator_type="variational_gp")
+                params = tl.TrainParams(estimator_params=estimator_params)
                 emulator.train(dataset, ["X"], ["y"], params)
 
             Train an emulator with a specific (here linear) kernel:
@@ -304,19 +304,22 @@ class Emulator:
             detail = _utils.get_value_from_body("detail", request_response)
             print(detail)
         if not wait:
+            process_id = _utils.get_value_from_body("process_id", request_response)
+            time.sleep(NOT_WAIT_TIME)
+            _api.get_emulator_process(self.id, process_id)
             return self.id
-        _utils.wait_for_job_completion(
-            _api.get_emulator_status, self.id, verbose=verbose
-        )
-        if verbose:
-            print(f"Training of emulator {self.id} is complete!")
+        else:
+            _utils.wait_for_job_completion(
+                _api.get_emulator_status, self.id, verbose=verbose
+            )
+            if verbose:
+                print(f"Training of emulator {self.id} is complete!")
 
     @typechecked
     def status(self, verbose: bool = False) -> dict:
         """Check the status of a training process on the twinLab cloud.
 
         Args:
-            process_id (str): The process ID of the training process to check the status of.
             verbose (bool, optional): Display information about the operation while running.
 
         Returns:
@@ -325,14 +328,15 @@ class Emulator:
         Example:
             .. code-block:: python
 
-                emulator = tl.Emulator("beb7f97f")
+                emulator = tl.Emulator("my_emulator")
                 emulator.status()
 
             .. code-block:: console
 
                 {
-                    'process_status': 'Your job has finished and is on its way back to you.',
-                    'process_id': 'beb7f97f',
+                    'status': 'success'
+                    'start_time': '2024-07-31 18:12:33',
+                    'end_time': '2024-07-31 18:12:35',
                 }
 
         """
@@ -743,7 +747,7 @@ class Emulator:
         Note that a test dataset must have been defined in order for this to produce a result.
         This means that ``train_test_ratio`` in TrainParams must be less than ``1`` when training the emulator.
         If there is no test dataset then this will return ``None``.
-        The score can be calculated using different metrics, see the ``ScoreParams`` class for a full list and description of available metrics.
+        The score can be calculated using different metrics; see the :func:`~params.ScoreParams` class for a full list and description of available metrics.
 
         Args:
             params (ScoreParams, optional): A parameters object that contains optional scoring parameters.
@@ -811,7 +815,7 @@ class Emulator:
         These values can be plotted as the values on a y-axis, while the x-axis is taken to be 100 equally spaced values between 0 and 1 (inclusive).
         A well-calibrated emulator will have a curve that is close to the line ``y = x``.
         If the shape deviates from this line, the emulator may be under- or overconfident, but the exact interpretation depends on the type of curve.
-        See the documentation for ``BenchmarkParams`` for more information on the available types.
+        See the documentation for :func:`~params.BenchmarkParams` for more information on the available benchmark types.
 
         Args:
             params (BenchmarkParams, optional): A parameter-configuration object that contains optional parameters for benchmarking an emulator.
@@ -871,11 +875,14 @@ class Emulator:
         This method makes predictions from a trained emulator on new data.
         This method is the workhorse of the twinLab suite, allowing users to make predictions based on their training data.
         The emulator can make predictions on data that are far away from the training data, and can interpolate reliably between the training data points.
-        The emulator returns both a predicted mean and standard deviation for each output dimension.
-        This allows a user to not only make predictions, but also to quantify the uncertainty on those predictions.
-        For a Gaussian Process, the standard deviation is a measure of the uncertainty in the prediction,
-        while the mean is the prediction itself.
-        The emulator is 95% confident that the true value lies within two standard deviations of the mean.
+        The emulator returns both a predicted mean and an uncertainty for each output dimension.
+        This allows a user to not only make predictions, but also to quantify the uncertainty on those predictions:
+
+        - For a regression model the uncertainty is the Gaussian standard deviation, which is a measure of the uncertainty in the prediction.
+          The emulator is 95% confident that the true value lies within two standard deviations of the mean.
+        - For a classification model the uncertainty is the probability of the predicted class, which is a measure of the confidence in the prediction.
+
+        See the documentation for :func:`~params.PredictParams` for more information on additional parameters that can be passed to predict.
 
         Args:
             df (pandas.DataFrame): The ``X`` values for which to make predictions.
@@ -922,6 +929,8 @@ class Emulator:
             print(f"Job predict process ID: {process_id}")
 
         if not wait:
+            time.sleep(NOT_WAIT_TIME)
+            _api.get_emulator_process(self.id, process_id)
             return process_id
 
         response = _utils.wait_for_job_completion(
@@ -945,11 +954,12 @@ class Emulator:
     ) -> Union[pd.DataFrame, str]:
         """Draw samples from a trained emulator that exists on the twinLab cloud.
 
-        A secondary functionality of the emulator is to draw sample predictions from the trained emulator.
-        Rather than quantifying the uncertainty in the predictions, this method draws samples from the emulator.
+        A secondary functionality of the emulator is to draw a set of example predictions from the trained emulator.
+        Rather than quantifying the uncertainty in the predictions, this method draws representative samples from the emulator.
         The collection of samples can be used to explore the distribution of the emulator predictions.
         Each sample is a possible prediction of the emulator, and therefore a prediction of a possible new observation from the data-generation process.
-        The covariance in the emulator predictions can therefore be explored, which is particularly useful for functional Gaussian Processes.
+        The covariance in the emulator predictions can therefore be explored, which is particularly useful for functional emulators.
+        See the documentation for :func:`~params.SampleParams` for more information on additional parameters.
 
         If the output of the multi-indexed DataFrame needs to be manipulated then we provide the convenience functions:
 
@@ -998,14 +1008,17 @@ class Emulator:
             print(f"Job sample process ID: {process_id}")
 
         if not wait:
+            time.sleep(NOT_WAIT_TIME)
+            _api.get_emulator_process(self.id, process_id)
             return process_id
-
-        response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
-        )
-
-        df = EmulatorResultsAdapter("sample", response).adapt_result(verbose=verbose)
-        return df
+        else:
+            response = _utils.wait_for_job_completion(
+                _api.get_emulator_process, self.id, process_id, verbose=verbose
+            )
+            df = EmulatorResultsAdapter("sample", response).adapt_result(
+                verbose=verbose
+            )
+            return df
 
     @typechecked
     def recommend(
@@ -1024,16 +1037,17 @@ class Emulator:
 
         - ``"optimise"`` will obtain suggested ``"X"`` values the evaluation of which (acquiring the corresponding ``"y"``) will maximize the knowledge of the emulator about the location of the maximum.
           A classic use case for this would be a user trying to maximize the output of a model (e.g., the combination of metals that creates the strongest alloy).
-          This method can also be used to minimize an output, by using the ``weight`` argument of ``RecommendParams`` to multiply the output by -1.
-          If an emulator has more-than-one output, then a weighted combination of the outputs can be minimized/maximized.
-          Once again, using the ``opt_weight`` argument of ``MaximizeParams`` can control the weight assigned to each output, or can be used to focus on a single output.
-          For example, the maximum strength of a pipe given a set of design parameters.
+          This method can also be used to minimize an output, by using the ``weights`` argument of ``RecommendParams`` to multiply the output by -1.
+          If an emulator has multiple outputs, then a weighted combination of the outputs can be minimized/maximized.
+          The ``weights`` argument of ``RecommendParams`` can control the weight assigned to each output, or can be used to focus on a single output.
+          For example, this can be used to find the maximum strength of a pipe given a set of design parameters.
         - ``"explore"`` will instead suggest ``"X"`` that reduce the overall uncertainty of the emulator across the entire input space.
           A classic use case for this would be a user trying to reduce overally uncertainty.
           For example, a user trying to reduce the uncertainty in the strength of a pipe across all design parameters.
 
         The number of requested data points can be specified by the user, and if this is greater than 1 then recommendations are all suggested at simultaneously, and are designed to be the optimal set, as a group, to achieve the user outcome.
         twinLab optimises which specific acquisition function within the chosen category will be used, prioritising numerical stability based on the number of points requested.
+        See the documentation for :func:`~params.RecommendParams` for more information on the available parameters.
 
         For the ``"explore"`` functionality, generating recommendations is not supported for multi-output emulators (when ``"y"`` has more than one dimension).
 
@@ -1093,15 +1107,21 @@ class Emulator:
         # Convert acq_func names to correct method depending on number of points requested
         if acq_func == "optimise":
             if num_points == 1:
-                acq_func = "EI"
+                acq_func = "LogEI"
             else:
-                acq_func = "qEI"
+                acq_func = "qLogEI"
         if acq_func == "explore":
-            acq_func = "qNIPV"
+            if num_points == 1:
+                acq_func = "PSD"
+            else:
+                acq_func = "qPSD"
 
         unpacked_params = params.unpack_parameters()
         unpacked_params["num_points"] = num_points
-        unpacked_params["acq_func"] = ACQ_FUNC_DICT[acq_func]
+        if acq_func in ACQ_FUNC_DICT:
+            unpacked_params["acq_func"] = ACQ_FUNC_DICT[acq_func]
+        else:
+            unpacked_params["acq_func"] = acq_func
 
         _, response = _api.post_emulator_recommend(self.id, unpacked_params)
 
@@ -1110,17 +1130,17 @@ class Emulator:
             print(f"Job recommend process ID: {process_id}")
 
         if not wait:
+            time.sleep(NOT_WAIT_TIME)
+            _api.get_emulator_process(self.id, process_id)
             return process_id
-
-        response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
-        )
-
-        df, acq_func_value = EmulatorResultsAdapter("recommend", response).adapt_result(
-            verbose=verbose
-        )
-
-        return df, acq_func_value
+        else:
+            response = _utils.wait_for_job_completion(
+                _api.get_emulator_process, self.id, process_id, verbose=verbose
+            )
+            df, acq_func_value = EmulatorResultsAdapter(
+                "recommend", response
+            ).adapt_result(verbose=verbose)
+            return df, acq_func_value
 
     @typechecked
     def calibrate(
@@ -1137,6 +1157,7 @@ class Emulator:
         However, the emulator can also be used to solve an inverse problem, where the user has an observation of ``y`` and wants to find the corresponding ``X``.
         Problems of this type are common in engineering and science, where the user has an observation of a system and wants to find the parameters that generated that observation.
         This operation can be numerically intensive, and the emulator can be used to solve this problem quickly and efficiently.
+        See the documentation for :func:`~params.CalibrateParams` for more information on the available parameters.
 
         Args:
             df_obs (pandas.DataFrame): A dataframe containing the single observation.
@@ -1181,14 +1202,17 @@ class Emulator:
             print(f"Job calibrate process ID: {process_id}")
 
         if not wait:
+            time.sleep(NOT_WAIT_TIME)
+            _api.get_emulator_process(self.id, process_id)
             return process_id
-
-        response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
-        )
-
-        df = EmulatorResultsAdapter("calibrate", response).adapt_result(verbose=verbose)
-        return df
+        else:
+            response = _utils.wait_for_job_completion(
+                _api.get_emulator_process, self.id, process_id, verbose=verbose
+            )
+            df = EmulatorResultsAdapter("calibrate", response).adapt_result(
+                verbose=verbose
+            )
+            return df
 
     @typechecked
     def maximize(
@@ -1203,9 +1227,11 @@ class Emulator:
         This method is useful for finding the best possible input for your model, given the emulator predictions.
         This can help provide guidance for how best to configure your experiment, for example.
         This method can be used in a stand-alone manner to find the maximum, or at the end of a Bayesian optimization loop to find the best possible input.
+        See the documentation for :func:`~params.MaximizeParams` for more information on the available parameters.
+
         This method can also be used to minimize an output, by using the ``opt_weight`` argument of ``MaximizeParams`` to multiply the output by -1.
-        If an emulator has more-than-one output, then a weighted combination of the outputs can be minimized/maximized.
-        Once again, using the ``opt_weight`` argument of ``MaximizeParams`` can control the weight assigned to each output, or can be used to focus on a single output.
+        If an emulator has more-than-one output, then a weighted combination of the outputs can be minimized/maximized:
+        The ``opt_weight`` argument of ``MaximizeParams`` can control the weight assigned to each output, or can be used to focus on a single output.
 
         Args:
             params (MaximizeParams): A parameter-configuration that contains optional parameters for finding the input that produces the maximum model output.
@@ -1237,15 +1263,17 @@ class Emulator:
             print(f"Job maximize process ID: {process_id}")
 
         if not wait:
+            time.sleep(NOT_WAIT_TIME)
+            _api.get_emulator_process(self.id, process_id)
             return process_id
-
-        response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
-        )
-
-        df = EmulatorResultsAdapter("maximize", response).adapt_result(verbose=verbose)
-
-        return df
+        else:
+            response = _utils.wait_for_job_completion(
+                _api.get_emulator_process, self.id, process_id, verbose=verbose
+            )
+            df = EmulatorResultsAdapter("maximize", response).adapt_result(
+                verbose=verbose
+            )
+            return df
 
     @typechecked
     def learn(
@@ -1279,7 +1307,7 @@ class Emulator:
             num_points_per_loop (int): Number of points to sample in each loop.
             acq_func (str): Specifies the acquisition function to be used when recommending new points: either ``"explore"`` or ``"optimise"``.
             simulation (Callable): A function that takes in a set of inputs and generates the outputs (for example, a simulator for the data generating process).
-            train_params (TrainParams, optional): A parameter configuration that contains optional training parameters. Note that currently we only support the case when ``"test_train_ratio=1"`` when running a learning loop. Note that fixed-noise Gaussian Processes are not supported in this method and will raise an error. This includes: ``"fixed_noise_gp"``, ``"heteroskedastic_gp"``, ``"fixed_noise_multi_fidelity_gp"``.
+            train_params (TrainParams, optional): A parameter configuration that contains optional training parameters. Note that currently we only support the case when ``"test_train_ratio=1"`` when running a learning loop. Note that fixed-noise emulators are not supported in this method and will raise an error. This includes: ``"fixed_noise_gp"``, ``"heteroskedastic_gp"``, ``"fixed_noise_multi_fidelity_gp"``.
             recommend_params (RecommendParams, optional): A parameter configuration that contains optional recommendation parameters.
             verbose (bool, optional): Display detailed information about the operation while running. If ``True``, the requested candidate points will be printed to the screen while running. If ``False`` the emulator will be updated on the cloud while the method runs silently.
 
@@ -1540,6 +1568,7 @@ class Emulator:
         params: PredictParams = PredictParams(),
         x1_lim: Optional[Tuple[float, float]] = None,
         x2_lim: Optional[Tuple[float, float]] = None,
+        y_lim: Optional[Tuple[Optional[float], Optional[float]]] = None,
         n_points: int = 25,
         cmap=digilab_cmap,  # NOTE: No typehint beacause the same as matplolib cmap (string & objects)?
         figsize: Tuple[float, float] = (6.4, 4.8),
@@ -1565,6 +1594,7 @@ class Emulator:
                 If not provided, the limits will be taken directly from the emulator.
             x2_lim (tuple[float, float], optional): The limits of the x2-axis.
                 If not provided, the limits will be taken directly from the emulator.
+            y_lim (tuple[float, float], optional): The limits of the y-axis; this is the colorbar.
             n_points (int, optional): The number of points to sample in each dimension.
                 The default is 25, which will create a 25x25 grid.
             cmap (str, optional): The color of the plot. Defaults to a digiLab palette.
@@ -1654,15 +1684,17 @@ class Emulator:
         df_X = pd.DataFrame(X)
 
         # Predict using the emulator
-        # NOTE: Uncertainty is discarded here
         df_mean, df_std = self.predict(df_X, params=params, verbose=verbose)
-
         if mean_or_std == "mean":
             df = df_mean
         elif mean_or_std == "std":
             df = df_std
         else:
             raise ValueError("mean_or_std must be either 'mean' or 'std'")
+
+        # Colorbar limits
+        vmin = y_lim[0] if y_lim is not None else None
+        vmax = y_lim[1] if y_lim is not None else None
 
         # Plot the results
         plt = _plotting.heatmap(
@@ -1673,5 +1705,7 @@ class Emulator:
             df,
             cmap,
             figsize,
+            vmin,
+            vmax,
         )
         return plt  # Return the plot
