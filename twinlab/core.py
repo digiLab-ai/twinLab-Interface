@@ -6,7 +6,8 @@ import pandas as pd
 from typeguard import typechecked
 
 from . import _api, _utils
-from ._utils import get_value_from_body
+from ._utils import get_value_from_body, convert_time_formats_in_status
+from .settings import ValidStatus
 
 
 @typechecked
@@ -50,7 +51,7 @@ def set_user(username: str, verbose: bool = False) -> None:
     Example:
         .. code-block:: python
 
-            tl.set_user("tim@digilab.co.uk")
+            tl.set_user("example@digilab.co.uk")
 
     """
     os.environ["TWINLAB_USER"] = username
@@ -258,10 +259,10 @@ def list_emulators(
     These trained emulators can be used for a variety of inference operations (see methods of the Emulator class).
 
     Args:
-        verbose (bool, optional): Display information about the emulators while running.
+        verbose (bool, optional): Display information about the operation while running.
 
     Returns:
-        list: Currently trained emulators.
+        list: Currently trained and training emulators.
 
     Example:
         .. code-block:: python
@@ -276,10 +277,91 @@ def list_emulators(
     """
     _, response = _api.get_emulators()
     emulators = _utils.get_value_from_body("emulators", response)
+
     if verbose:
         print("Emulators:")
         pprint(emulators, compact=True, sort_dicts=False)
+
     return emulators
+
+
+@typechecked
+def list_emulators_statuses(
+    verbose: bool = False,
+) -> List[dict]:
+    """List the status of training and trained emulators, as well as those that have failed to train.
+
+    This includes the start and end times of training, the status of the emulator, and any error messages if the emulator failed to train.
+
+    Args:
+        verbose (bool, optional): Display information about the operation while running.
+
+    Returns:
+        list: Statuses of emulators on the twinLab cloud.
+
+    Example:
+        .. code-block:: python
+
+            statuses = tl.list_emulators_statuses()
+            print(statuses)
+
+        .. code-block:: console
+
+            [
+                {
+                    "status": "success",
+                    "start_time": "2024-08-20 12:28:05",
+                    "end_time": "2024-08-20 12:28:07",
+                    "emulator_name": "biscuits",
+                },
+                {
+                    "status": "processing",
+                    "start_time": "2024-08-20 12:19:16",
+                    "emulator_name": "gardening",
+                },
+                {
+                    "status": "failure",
+                    "start_time": "2024-08-06 13:07:06",
+                    "end_time": "2024-08-06 13:07:07",
+                    "error": "KeyError: DataFrame must contain columns: ['X,y']",
+                    "emulator_name": "new-emulator",
+                },
+            ]
+
+    """
+
+    _, response = _api.get_emulators_statuses()
+    emulator_statuses = _utils.get_value_from_body("emulators_statuses", response)
+
+    # Print detailed emulator information to screen
+    if verbose:
+        # Create dictionary of cuddly status messages
+        status_messages = {
+            ValidStatus.PROCESSING.value: "Emulators currently training:",
+            ValidStatus.SUCCESS.value: "Successfully trained emulators:",
+            ValidStatus.FAILURE.value: "Emulators that failed to train:",
+            None: "Emulators with unknown status:",
+        }
+
+        if emulator_statuses:
+            for nice_status in status_messages.keys():
+                print("\033[1m" + status_messages[nice_status])  # Bold text
+                print("\033[0m")  # Reset text formatting
+                status_count = 0
+                for status_dict in emulator_statuses:
+                    status_dict = convert_time_formats_in_status(status_dict)
+                    status = status_dict.get("status", None)
+                    if status == nice_status:
+                        status_count += 1
+                        pprint(status_dict, compact=True, sort_dicts=False)
+                        print()
+                if status_count == 0:
+                    print(f"No {status_messages[nice_status].lower()[:-1]}")
+                    print()
+        else:
+            print("No emulators found.")
+
+    return emulator_statuses
 
 
 @typechecked

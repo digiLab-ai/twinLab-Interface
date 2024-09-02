@@ -16,7 +16,7 @@ from typeguard import typechecked
 from . import _api, _plotting, _utils, settings
 from ._plotting import DIGILAB_CMAP as digilab_cmap
 from ._plotting import DIGILAB_COLORS as digilab_colors
-from ._utils import EmulatorResultsAdapter
+from ._utils import EmulatorResultsAdapter, convert_time_formats_in_status
 from .dataset import Dataset
 from .params import (
     BenchmarkParams,
@@ -486,8 +486,39 @@ class Emulator:
             pprint(df_test)
         return df_test
 
-    def list_processes(self, verbose: bool = False) -> Dict[str, Dict]:
+    def list_processes(self, verbose: bool = False) -> List[str]:
         """List all of the processes associated with a given emulator on the twinLab cloud.
+
+        Args:
+            verbose (bool, optional): Determining level of information returned to the user. Default is False.
+
+        Returns:
+            list: List containing all of the process IDs associated with the emulator.
+
+        Example:
+
+            .. code-block:: python
+
+                emulator = tl.Emulator("quickstart")
+                emulator.list_processes()
+
+            .. code-block:: console
+
+                ['predict-distinct-honey-milk', 'sample-four-hungry-wolves']
+
+        """
+        _, response = _api.get_emulator_processes(self.id)
+        processes = _utils.get_value_from_body("process_ids", response)
+
+        if verbose:
+            print(processes)
+
+        return processes
+
+    def list_processes_statuses(self, verbose: bool = False) -> List[str]:
+        """List the status of all processes associated with a given emulator on the twinLab cloud.
+
+        This includes the current status of the process, the start time, the end time, and the process ID.
 
         Args:
             verbose (bool, optional): Determining level of information returned to the user. Default is False.
@@ -500,7 +531,7 @@ class Emulator:
             .. code-block:: python
 
                 emulator = tl.Emulator("quickstart")
-                emulator.list_processes()
+                emulator.list_processes_statuses()
 
             .. code-block:: console
 
@@ -522,57 +553,46 @@ class Emulator:
                 ]
 
         """
-        _, response = _api.get_emulator_processes(self.id)
-        processes = _utils.get_value_from_body("processes", response)
+        _, response = _api.get_emulator_processes_statuses(self.id)
+        process_statuses = _utils.get_value_from_body("process_statuses", response)
 
         # Create dictionary of cuddly response
         status_dict = {
             ValidStatus.SUCCESS.value: "Successful processes:",
             ValidStatus.PROCESSING.value: "Currently running processes:",
             ValidStatus.FAILURE.value: "Processes that failed to complete:",
+            None: "No status available for this process:",
         }
 
+        # Print detailed emulator information to screen
         if verbose:
-            if not processes:
+
+            # Create dictionary of cuddly status messages
+            status_messages = {
+                ValidStatus.PROCESSING.value: "Processes currently runnning:",
+                ValidStatus.SUCCESS.value: "Successful processes:",
+                ValidStatus.FAILURE.value: "Processes that failed to complete:",
+                None: "Processes with unknown status:",
+            }
+            if process_statuses:
+                for nice_status in status_messages.keys():
+                    print("\033[1m" + status_messages[nice_status])  # Bold text
+                    print("\033[0m")  # Reset text formatting
+                    status_count = 0
+                    for status_dict in process_statuses:
+                        status_dict = convert_time_formats_in_status(status_dict)
+                        status = status_dict.get("status", None)
+                        if status == nice_status:
+                            status_count += 1
+                            pprint(status_dict, compact=True, sort_dicts=False)
+                            print()
+                    if status_count == 0:
+                        print(f"No {status_messages[nice_status].lower()[:-1]}")
+                        print()
+            else:
                 print("No processes available for this emulator.")
 
-            for status, nice_status in status_dict.items():
-                organized_processes = []
-                # Loop over all processes and organize them by status
-                for process in processes:
-                    if process["status"] == status:
-                        organized_processes.append(process)
-
-                for i, process in enumerate(organized_processes):
-                    process_dict = {}
-                    run_time = _utils.calculate_run_time(
-                        process["start_time"], process["end_time"]
-                    )
-
-                    # Convert the time to a nicer format
-                    process_dict["start_time"] = _utils.convert_time_format(
-                        process["start_time"]
-                    )
-                    process_dict["run_time"] = run_time
-
-                    # Get the process method
-                    # process_dict["method"] = process["process_id"].split("-")[0]
-                    process_dict["process_id"] = process["process_id"]
-
-                    organized_processes[i] = process_dict
-
-                # Sort the list to show the most recent processes first
-                organized_processes = sorted(
-                    organized_processes, key=lambda d: d["start_time"]
-                )[
-                    ::-1
-                ]  # NOTE: Why doesn't .reverse() work here?
-
-                if organized_processes:
-                    print(nice_status)
-                    pprint(organized_processes)
-
-        return processes
+        return process_statuses
 
     @typechecked
     def get_process(self, process_id: str, verbose: bool = False) -> Union[
@@ -626,8 +646,6 @@ class Emulator:
             result = EmulatorResultsAdapter(method, response).adapt_result(
                 verbose=verbose
             )
-            print(result)
-
             if verbose:
                 print(f"Process {process_id} results:")
                 print(result)
@@ -1373,10 +1391,8 @@ class Emulator:
             # Evaluating the candidate points
             candidate_points[outputs] = simulation(candidate_points[inputs].values)
 
-            # Download current training data, append new data, and reupload
-            df_train = self.view_train_data()
-            df_train = pd.concat([df_train, candidate_points], ignore_index=True)
-            dataset.upload(df_train)
+            # Append new data to the dataset
+            dataset.append(candidate_points)
 
             # Train model
             self.train(
@@ -1439,7 +1455,7 @@ class Emulator:
         y_axis: str,
         x_fixed: Dict[str, float] = {},
         params: PredictParams = PredictParams(),
-        x_lim: Optional[Tuple[float, float]] = None,
+        x_lim: Tuple[Optional[float], Optional[float]] = (None, None),
         n_points: int = 100,
         label: Optional[str] = "Emulator",
         blur: bool = False,
@@ -1460,8 +1476,8 @@ class Emulator:
                 Note that all X variables of an emulator must either be specified as x_axis or appear as x_fixed keys.
                 To pass through "None", either leave x_fixed out or pass through an empty dictionary.
             params: (PredictParams, optional). A parameter configuration that contains optional prediction parameters.
-            x_lim (Union[tuple[float, float], None), optional]: The limits of the x-axis.
-                If not provided. the limits will be taken directly from the emulator.
+            x_lim ([tuple[Union[float, None], Union[float, None]]), optional]: The limits of the x-axis.
+                If either is not provided. the limits will be taken directly from the emulator.
             n_points (int, optional): The number of points to sample in the x-axis.
             label (Union[str, None], optional): The label for the line in the plot legend. Defaults to "Emulator".
             blur (bool, optional): If ``True`` the emulator prediction will be blurred to visualize the uncertainty in the emulator.
@@ -1518,12 +1534,19 @@ class Emulator:
                 f"All input columns must be specified either as x_axis or in x_fixed (and not both). {error_text}"
             )
 
-        # Get the range for the x-axis
-        if x_lim is not None:
-            xmin, xmax = x_lim
-        else:
+        # Get the range for the x-axis either from the user or from the emulator
+        # if x_lim is not None:
+        #     xmin, xmax = x_lim
+        # else:
+        #     inputs = response["summary"]["data_diagnostics"]["inputs"]
+        #     xmin, xmax = inputs[x_axis]["min"], inputs[x_axis]["max"]
+        xmin, xmax = x_lim
+        if xmin is None or xmax is None:
             inputs = response["summary"]["data_diagnostics"]["inputs"]
-            xmin, xmax = inputs[x_axis]["min"], inputs[x_axis]["max"]
+        if xmin is None:
+            xmin = inputs[x_axis]["min"]
+        if xmax is None:
+            xmax = inputs[x_axis]["max"]
 
         # Create a dataframe on which to predict
         X = {x_axis: np.linspace(xmin, xmax, n_points)}
@@ -1564,9 +1587,9 @@ class Emulator:
         x_fixed: Dict[str, float] = {},
         mean_or_std: str = "mean",
         params: PredictParams = PredictParams(),
-        x1_lim: Optional[Tuple[float, float]] = None,
-        x2_lim: Optional[Tuple[float, float]] = None,
-        y_lim: Optional[Tuple[Optional[float], Optional[float]]] = None,
+        x1_lim: Tuple[Optional[float], Optional[float]] = (None, None),
+        x2_lim: Tuple[Optional[float], Optional[float]] = (None, None),
+        y_lim: Tuple[Optional[float], Optional[float]] = (None, None),
         n_points: int = 25,
         cmap=digilab_cmap,  # NOTE: No typehint beacause the same as matplolib cmap (string & objects)?
         figsize: Tuple[float, float] = (6.4, 4.8),
@@ -1658,16 +1681,18 @@ class Emulator:
                 f"All input columns must be specified either as x1_axis, x2_axis, or in x_fixed (and not both). {error_text}"
             )
 
-        # Get the ranges for the x-axes
+        # Get the ranges for the x-axes either from the user or from the emulator
         inputs = response["summary"]["data_diagnostics"]["inputs"]
-        if x1_lim is None:
-            x1min, x1max = inputs[x1_axis]["min"], inputs[x1_axis]["max"]
-        else:
-            x1min, x1max = x1_lim
-        if x2_lim is None:
-            x2min, x2max = inputs[x2_axis]["min"], inputs[x2_axis]["max"]
-        else:
-            x2min, x2max = x2_lim
+        x1min, x1max = x1_lim
+        x2min, x2max = x2_lim
+        if x1min is None:
+            x1min = inputs[x1_axis]["min"]
+        if x1max is None:
+            x1max = inputs[x1_axis]["max"]
+        if x2min is None:
+            x2min = inputs[x2_axis]["min"]
+        if x2max is None:
+            x2max = inputs[x2_axis]["max"]
 
         # Create a grid of points
         x1 = np.linspace(x1min, x1max, n_points)
@@ -1690,10 +1715,6 @@ class Emulator:
         else:
             raise ValueError("mean_or_std must be either 'mean' or 'std'")
 
-        # Colorbar limits
-        vmin = y_lim[0] if y_lim is not None else None
-        vmax = y_lim[1] if y_lim is not None else None
-
         # Plot the results
         plt = _plotting.heatmap(
             x1_axis,
@@ -1703,7 +1724,7 @@ class Emulator:
             df,
             cmap,
             figsize,
-            vmin,
-            vmax,
+            vmin=y_lim[0],
+            vmax=y_lim[1],
         )
         return plt  # Return the plot

@@ -22,6 +22,17 @@ def get_emulators() -> Tuple[int, dict]:
 
 @typechecked
 @check_status_code
+def get_emulators_statuses() -> Tuple[int, dict]:
+    url = f"{os.getenv('TWINLAB_URL')}/emulators-statuses"
+    headers = create_headers()
+    response = requests.get(url, headers=headers)
+    status = response.status_code
+    body = response.json()
+    return status, body
+
+
+@typechecked
+@check_status_code
 def get_emulator_parameters(emulator_id: str) -> Tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/emulators/{emulator_id}/parameters"
     headers = create_headers()
@@ -189,6 +200,17 @@ def post_emulator_maximize(emulator_id: str, params: dict) -> Tuple[int, dict]:
 @check_status_code
 def get_emulator_processes(emulator_id: str) -> Tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/emulators/{emulator_id}/processes"
+    headers = create_headers()
+    response = requests.get(url, headers=headers)
+    status = response.status_code
+    body = response.json()
+    return status, body
+
+
+@typechecked
+@check_status_code
+def get_emulator_processes_statuses(emulator_id: str) -> Tuple[int, dict]:
+    url = f"{os.getenv('TWINLAB_URL')}/emulators/{emulator_id}/processes-statuses"
     headers = create_headers()
     response = requests.get(url, headers=headers)
     status = response.status_code

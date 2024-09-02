@@ -11,6 +11,7 @@ from .datasets import (
     get_example_datasets,
     post_dataset,
     post_dataset_analysis,
+    post_dataset_append,
     post_dataset_summary,
 )
 from .designs import get_design, post_design
@@ -21,9 +22,11 @@ from .emulators import (
     get_emulator_parameters,
     get_emulator_process,
     get_emulator_processes,
+    get_emulator_processes_statuses,
     get_emulator_status,
     get_emulator_summary,
     get_emulators,
+    get_emulators_statuses,
     post_emulator,
     post_emulator_benchmark,
     post_emulator_calibrate,

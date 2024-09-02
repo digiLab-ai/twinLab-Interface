@@ -97,6 +97,18 @@ def convert_time_format(time_string: str) -> str:
 
 
 @typechecked
+def convert_time_formats_in_status(status: dict) -> dict:
+
+    start_time = status.get("start_time")
+    if start_time:
+        status["start_time"] = convert_time_format(start_time)
+    end_time = status.get("end_time")
+    if end_time:
+        status["end_time"] = convert_time_format(end_time)
+    return status
+
+
+@typechecked
 def check_dataset(string: str) -> None:
     # Check that a sensible dataframe can be created from a .csv file string.
 

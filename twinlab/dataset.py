@@ -3,6 +3,7 @@ import io
 from typing import List
 
 import pandas as pd
+import uuid
 
 # Third-party imports
 from deprecated import deprecated
@@ -18,6 +19,20 @@ DEPRECATION_VERSION = "2.5.0"
 DEPRECATION_MESSAGE = (
     "This method is being deprecated. Please use `Dataset.analyse_variance()` to analyse either input or output variance.",
 )
+
+
+def _process_request_dataframes(df: pd.DataFrame) -> str:
+    # Create a unique ID for the dataset
+    dataset_id = str(uuid.uuid4())
+
+    # Generate a temporary upload URL - this URL does not have the 5.5mb limit
+    _, response = _api.get_dataset_temporary_upload_url(dataset_id)
+    url = _utils.get_value_from_body("url", response)
+
+    # Upload the dataframe to the presigned URL
+    _utils.upload_dataframe_to_presigned_url(df, url, check=settings.CHECK_DATASETS)
+
+    return dataset_id
 
 
 class Dataset:
@@ -84,6 +99,42 @@ class Dataset:
         else:
             csv_string = _utils.get_csv_string(df)
             _, response = _api.post_dataset(self.id, csv_string)
+        if verbose:
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
+
+    @typechecked
+    def append(
+        self,
+        df: pd.DataFrame,
+        verbose: bool = False,
+    ) -> None:
+        """Append new data to an existing dataset in the twinLab cloud.
+
+        Appending data to an existing dataset is useful when new data becomes available and needs to be added to the dataset for training purposes.
+        This can be useful when new data is generated over time, for example when using twinLab's ``Emulator.recommend`` functionality.
+        This method allows for the dataset to be updated directly on the cloud without needing to download, update and re-upload the entire dataset.
+
+        Please note that the new dataset must have the same columns as the original dataset.
+
+        Args:
+            df (pandas.DataFrame): A `pandas.DataFrame` containing the dataset to be appended.
+            verbose (bool, optional): Display information about the operation while running.
+
+        Example:
+            .. code-block:: python
+
+                dataset = tl.Dataset("my_dataset")
+                df = pd.DataFrame({"X": [1, 2, 3, 4], "y": [1, 4, 9, 16]})
+                dataset.append(df)
+
+        """
+        # Upload the file
+        dataset_id = _process_request_dataframes(df)
+        _, response = _api.post_dataset_append(
+            self.id,
+            dataset_id,
+        )
         if verbose:
             detail = _utils.get_value_from_body("detail", response)
             print(detail)

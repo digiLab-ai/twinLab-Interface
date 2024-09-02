@@ -72,6 +72,18 @@ def get_dataset(dataset_id: str) -> Tuple[int, dict]:
 
 @typechecked
 @check_status_code
+def post_dataset_append(dataset_id: str, new_dataset_id: str) -> Tuple[int, dict]:
+    url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/append"
+    headers = create_headers()
+    request_body = {"dataset_id": new_dataset_id}
+    response = requests.post(url, headers=headers, json=request_body)
+    status = response.status_code
+    body = response.json()
+    return status, body
+
+
+@typechecked
+@check_status_code
 def post_dataset_summary(dataset_id: str) -> Tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/summary"
     headers = create_headers()
