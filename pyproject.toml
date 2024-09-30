@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "twinlab"
-version = "2.13.0"
+version = "2.14.0"
 description = "twinLab - Probabilistic Machine Learning for Engineers"
 homepage = "https://twinlab.ai"
 documentation = "https://twinlab.ai"
