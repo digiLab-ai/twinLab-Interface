@@ -1,4 +1,4 @@
-# Version
+from ._beta.params import TrainParamsBeta
 from ._utils import (
     EmulatorResultsAdapter,
     check_dataset,
@@ -15,8 +15,6 @@ from ._utils import (
     upload_file_to_presigned_url,
 )
 from ._version import __version__
-
-# General functions
 from .core import (
     get_api_key,
     get_server_url,
@@ -33,8 +31,6 @@ from .core import (
     versions,
 )
 from .dataset import Dataset
-
-# Distribution class
 from .distributions import Distribution
 from .emulator import Emulator
 from .helper import get_sample, join_samples, load_dataset, load_params
@@ -53,10 +49,6 @@ from .params import (
     ScoreParams,
     TrainParams,
 )
-
-# Prior class
 from .prior import Prior
-
-# Sampling methods
 from .sampling import Sampling
-from .settings import ValidStatus
+from .settings import ValidStatus, ValidExportFormats

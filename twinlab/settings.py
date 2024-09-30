@@ -17,6 +17,15 @@ class ValidStatus(Enum):
     FAILURE = "failure"
 
 
+# Not a good name?
+class ValidExportFormats(Enum):
+    TORCHSCRIPT = "torchscript"
+
+    @staticmethod
+    def list():
+        return [format.value for format in ValidExportFormats]
+
+
 # Parameters
 DEFAULT_TWINLAB_URL = "https://twinlab.digilab.co.uk/v3"
 CHECK_DATASETS = True  # Check datasets are sensible before uploading

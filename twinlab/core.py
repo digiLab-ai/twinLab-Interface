@@ -349,10 +349,17 @@ def list_emulators_statuses(
                 print("\033[0m")  # Reset text formatting
                 status_count = 0
                 for status_dict in emulator_statuses:
-                    status_dict = convert_time_formats_in_status(status_dict)
                     status = status_dict.get("status", None)
                     if status == nice_status:
                         status_count += 1
+                        if status_dict.get("end_time", None):
+                            status_dict["run_time"] = _utils.calculate_runtime(
+                                status_dict.get("start_time"),
+                                status_dict.pop("end_time"),
+                            )
+                        else:
+                            status_dict["run_time"] = "N/A"
+                        status_dict = convert_time_formats_in_status(status_dict)
                         pprint(status_dict, compact=True, sort_dicts=False)
                         print()
                 if status_count == 0:

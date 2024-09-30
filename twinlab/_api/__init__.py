@@ -35,4 +35,7 @@ from .emulators import (
     post_emulator_recommend,
     post_emulator_sample,
     post_emulator_score,
+    post_emulator_update,
+    post_emulator_torchscript,
+    get_emulator_torchscript,
 )

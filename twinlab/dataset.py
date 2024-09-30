@@ -1,9 +1,9 @@
 # Standard imports
 import io
+import uuid
 from typing import List
 
 import pandas as pd
-import uuid
 
 # Third-party imports
 from deprecated import deprecated
@@ -93,12 +93,15 @@ class Dataset:
                 verbose=verbose,
                 check=settings.CHECK_DATASETS,
             )
-            if verbose:
-                print("Summarising dataset")
-            _, response = _api.post_dataset_summary(self.id)
         else:
             csv_string = _utils.get_csv_string(df)
             _, response = _api.post_dataset(self.id, csv_string)
+            if verbose:
+                detail = _utils.get_value_from_body("detail", response)
+                print(detail)
+
+        # Create the dataset summary
+        _, response = _api.post_dataset_summary(self.id)
         if verbose:
             detail = _utils.get_value_from_body("detail", response)
             print(detail)
@@ -129,12 +132,18 @@ class Dataset:
                 dataset.append(df)
 
         """
-        # Upload the file
+        # Do the appending
         dataset_id = _process_request_dataframes(df)
         _, response = _api.post_dataset_append(
             self.id,
             dataset_id,
         )
+        if verbose:
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
+
+        # Update the dataset summary
+        _, response = _api.post_dataset_summary(self.id)
         if verbose:
             detail = _utils.get_value_from_body("detail", response)
             print(detail)

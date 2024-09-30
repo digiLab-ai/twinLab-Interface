@@ -14,9 +14,14 @@ from typeguard import typechecked
 
 # Project imports
 from . import _api, _plotting, _utils, settings
+from ._beta.params import TrainParamsBeta
 from ._plotting import DIGILAB_CMAP as digilab_cmap
 from ._plotting import DIGILAB_COLORS as digilab_colors
-from ._utils import EmulatorResultsAdapter, convert_time_formats_in_status
+from ._utils import (
+    EmulatorResultsAdapter,
+    convert_time_formats_in_status,
+    download_file_from_url,
+)
 from .dataset import Dataset
 from .params import (
     BenchmarkParams,
@@ -30,7 +35,7 @@ from .params import (
     TrainParams,
 )
 from .prior import Prior
-from .settings import ValidStatus
+from .settings import ValidExportFormats, ValidStatus
 
 # Parameters
 ACQ_FUNC_DICT = {  # TODO: Delete this?
@@ -192,7 +197,7 @@ class Emulator:
         dataset: Dataset,
         inputs: List[str],
         outputs: List[str],
-        params: TrainParams = TrainParams(),
+        params: Union[TrainParams, TrainParamsBeta] = TrainParams(),
         wait: bool = True,
         verbose: bool = True,
     ):
@@ -556,14 +561,6 @@ class Emulator:
         _, response = _api.get_emulator_processes_statuses(self.id)
         process_statuses = _utils.get_value_from_body("process_statuses", response)
 
-        # Create dictionary of cuddly response
-        status_dict = {
-            ValidStatus.SUCCESS.value: "Successful processes:",
-            ValidStatus.PROCESSING.value: "Currently running processes:",
-            ValidStatus.FAILURE.value: "Processes that failed to complete:",
-            None: "No status available for this process:",
-        }
-
         # Print detailed emulator information to screen
         if verbose:
 
@@ -580,10 +577,17 @@ class Emulator:
                     print("\033[0m")  # Reset text formatting
                     status_count = 0
                     for status_dict in process_statuses:
-                        status_dict = convert_time_formats_in_status(status_dict)
                         status = status_dict.get("status", None)
                         if status == nice_status:
                             status_count += 1
+                            if status_dict.get("end_time", None):
+                                status_dict["run_time"] = _utils.calculate_runtime(
+                                    status_dict.get("start_time"),
+                                    status_dict.pop("end_time"),
+                                )
+                            else:
+                                status_dict["run_time"] = "N/A"
+                            status_dict = convert_time_formats_in_status(status_dict)
                             pprint(status_dict, compact=True, sort_dicts=False)
                             print()
                     if status_count == 0:
@@ -601,6 +605,7 @@ class Emulator:
         pd.DataFrame,  # score; benchmark; sample; calibrate; maximize
         Tuple[pd.DataFrame, pd.DataFrame],  # predict
         Tuple[pd.DataFrame, float],  # recommend
+        str,  # message for failed/running process
     ]:
         """Get the results from a process associated with the emulator on the twinLab cloud.
 
@@ -750,6 +755,73 @@ class Emulator:
             print("Trained emulator summary:")
             pprint(summary, compact=True, sort_dicts=False)
         return summary
+
+    @typechecked
+    def update(
+        self,
+        df: pd.DataFrame,
+        df_std: Optional[pd.DataFrame] = None,
+        wait: bool = True,
+        verbose: bool = False,
+    ) -> Union[None, str]:
+        """
+        Update an emulator with new training data.
+
+        This method allows a user to update an existing emulator with new training data.
+        This is useful when new data is collected, and the emulator needs to incorporate this new information, but you do not want to train the emulator from scratch.
+        The parameters of the emulator are not updated; in this process the emulator is simply conditioned on the new data points.
+        This means that the process is fast, but note that the quality of the emulator may degrade with multiple frequent updates, compared to re-training in an active learning loop.
+
+        Args:
+            df (pandas.DataFrame): The new training data to update the emulator with.
+            df_std (pandas.DataFrame, optional): The standard deviation of the new training data.
+                This is used to update the emulator with uncertainty information.
+            wait (bool, optional): If ``True`` wait for the job to complete, otherwise return the process ID and exit.
+            verbose (bool, optional): Display information about the operation while running.
+
+        Returns:
+            None
+
+        Example:
+
+            .. code-block:: python
+
+                df = pd.DataFrame({"X": [1, 2, 3, 4], "y": [1, 4, 9, 16]})
+                emulator = tl.Emulator("my_emulator")
+                emulator.train(df)
+
+                # Update the emulator with new data
+                new_df = pd.DataFrame({"X": [5], "y": [25]})
+                emulator.update(new_df)
+        """
+
+        params = {}
+        params = _process_request_dataframes(df, params, "dataset")
+        if df_std is not None:
+            params = _process_request_dataframes(df_std, params, "dataset_std")
+
+        _, body = _api.post_emulator_update(self.id, params)
+
+        process_id = body["process_id"]
+        if verbose:
+            print(f"Job update process ID: {process_id}")
+
+        if not wait:
+            time.sleep(NOT_WAIT_TIME)
+            _api.get_emulator_process(self.id, process_id)
+            return process_id
+
+        # Await the completion of the scoring process
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_process, self.id, process_id, verbose=verbose
+        )
+
+        update = EmulatorResultsAdapter("update", response).adapt_result(
+            verbose=verbose
+        )
+
+        if update:
+            print(f"Your emulator has been updated with new data.")
 
     @typechecked
     def score(
@@ -1728,3 +1800,61 @@ class Emulator:
             vmax=y_lim[1],
         )
         return plt  # Return the plot
+
+    @typechecked
+    def export(
+        self,
+        file_path: str,
+        format: str,
+        observation_noise: Optional[bool] = None,
+        verbose: bool = True,
+    ) -> None:
+        """
+        Export your emulator using a valid file format.
+        Currently twinLab support exporting emulators in the following formats:
+            - ``"torchscript"``: Export the emulator as a TorchScript model for easy inference in PyTorch. Please see the `Pytorch documentation <https://pytorch.org/docs/stable/jit.html#>`_ for more information on how to use TorchScript models.
+
+        Args:
+            file_path (str): The path to save the exported emulator.
+            format (str): The format in which to export the emulator. Valid strings include ``"torchscript"``.
+            observation_noise (bool, optional): If supported by your emulator, setting this to ``True`` means the emulator will be exported with observation noise.
+            verbose (bool, optional): Display detailed information about the operation while running.
+
+        Returns:
+            None
+
+        Examples:
+            .. code-block:: python
+
+                emulator = tl.Emulator("emulator_id")
+                emulator.train(dataset, inputs, outputs, params)
+                emulator.export("torchscript")
+        """
+
+        # Assert the format is in the valid enum
+        try:
+            format_enum = ValidExportFormats(format)
+        except ValueError as e:
+            raise ValueError(
+                f"`'{format}'` is not a valid export format. Please choose from one of the following: {ValidExportFormats.list()}"
+            ) from e
+
+        if format_enum == ValidExportFormats.TORCHSCRIPT:
+
+            # First check if the .pt file already exists
+
+            _, response = _api.post_emulator_torchscript(
+                self.id, {"observation_noise": observation_noise}
+            )
+            print(response)
+            process_id = _utils.get_value_from_body("process_id", response)
+
+            response = _utils.wait_for_job_completion(
+                _api.get_emulator_torchscript, self.id, process_id, verbose=False
+            )
+
+            result_url = response["result_url"]
+            download_file_from_url(result_url, file_path)
+
+        if verbose:
+            print(f"Emulator exported to {file_path} successfully.")

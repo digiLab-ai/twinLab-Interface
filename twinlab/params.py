@@ -551,6 +551,7 @@ class RecommendParams(Params):
         self.bounds = bounds
         self.seed = seed
 
+        # TODO: This horror-show should be removed in the next release!
         if self.bounds is not None:
             self.bounds = pd.DataFrame(self.bounds)
             self.bounds.rename(

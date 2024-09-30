@@ -17,6 +17,8 @@ ALLOWED_DATAFRAME_SIZE = 5.5 * int(1e6)
 PING_TIME_INITIAL = 1.0  # Seconds
 PING_FRACTIONAL_INCREASE = 0.1
 
+DATETIME_STRING_FORMAT = "%Y-%m-%d %H:%M:%S"
+
 
 @typechecked
 def _calculate_ping_time(elapsed_time: float) -> float:
@@ -86,12 +88,31 @@ def get_value_from_body(key: str, body: dict):
 
 
 @typechecked
+def calculate_runtime(start_time: str, end_time: str) -> str:
+    # Calculate the runtime of a job given the start and end times.
+
+    start_datetime = datetime.fromisoformat(start_time)
+    end_datetime = datetime.fromisoformat(end_time)
+    runtime = end_datetime - start_datetime
+
+    # Extract hours, minutes, and seconds from the timedelta object
+    total_seconds = int(runtime.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    # Format the runtime as HH:MM:SS
+    nice_time_string = f"{hours:02}:{minutes:02}:{seconds:02}"
+
+    return nice_time_string
+
+
+@typechecked
 def convert_time_format(time_string: str) -> str:
     # Parse the time string into a datetime object
     dt = datetime.fromisoformat(time_string)
 
     # Format the datetime object into a nice string
-    nice_time_string = dt.strftime("%Y-%m-%d %H:%M:%S")
+    nice_time_string = dt.strftime(DATETIME_STRING_FORMAT)
 
     return nice_time_string
 
@@ -99,10 +120,10 @@ def convert_time_format(time_string: str) -> str:
 @typechecked
 def convert_time_formats_in_status(status: dict) -> dict:
 
-    start_time = status.get("start_time")
+    start_time = status.get("start_time", None)
     if start_time:
         status["start_time"] = convert_time_format(start_time)
-    end_time = status.get("end_time")
+    end_time = status.get("end_time", None)
     if end_time:
         status["end_time"] = convert_time_format(end_time)
     return status
@@ -138,6 +159,22 @@ def check_dataset(string: str) -> None:
     # Check that the dataset contains only numerical values.
     if not df.map(lambda x: isinstance(x, (int, float))).all().all():
         raise Warning("Dataset contains non-numerical values.")
+
+
+@typechecked
+def download_file_from_url(presigned_url: str, file_path: str) -> None:
+    try:
+        # Make the HTTP GET request to fetch the file
+        response = requests.get(presigned_url)
+
+        # Write the content to the specified file path
+        with open(file_path, "wb") as file:
+            file.write(response.content)
+
+        print(f"File downloaded successfully and saved to {file_path}")
+
+    except Exception as e:
+        print(f"Failed to download the file: {e}")
 
 
 @typechecked
@@ -304,6 +341,9 @@ class EmulatorResultsAdapter:
             # What should this return?
             raise RuntimeError("Non-success status")
 
+    def adapt_update_results(self, verbose: bool):
+        return self.result["update"]
+
     def adapt_design_results(self, verbose: bool):
         design_csv = self.result["design"]
 
@@ -401,6 +441,10 @@ class EmulatorResultsAdapter:
             print("Calibration curve:")
             pprint(benchmark)
         return benchmark
+
+    def adapt_export_results(self, file_path: str, verbose: bool):
+
+        download_file_from_url(self.result_url, file_path)
 
 
 @typechecked

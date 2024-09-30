@@ -111,7 +111,18 @@ def get_emulator_status(emulator_id: str) -> Tuple[int, dict]:
 
 ### ###
 
-### Inference endpoints ###
+### Emulator method endpoints ###
+
+
+@typechecked
+@check_status_code
+def post_emulator_update(emulator_id: str, params: dict) -> Tuple[int, dict]:
+    url = f"{os.getenv('TWINLAB_URL')}/emulators/{emulator_id}/update"
+    headers = create_headers()
+    response = requests.post(url, headers=headers, json=params)
+    status = response.status_code
+    body = response.json()
+    return status, body
 
 
 @typechecked
@@ -238,6 +249,33 @@ def delete_emulator_process(emulator_id: str, process_id: str) -> Tuple[int, dic
     url = f"{os.getenv('TWINLAB_URL')}/emulators/{emulator_id}/processes/{process_id}"
     headers = create_headers()
     response = requests.delete(url, headers=headers)
+    status = response.status_code
+    body = response.json()
+    return status, body
+
+
+### ###
+
+### Exporting Emulators ###
+
+
+@typechecked
+@check_status_code
+def post_emulator_torchscript(emulator_id: str, params: dict) -> Tuple[int, dict]:
+    url = f"{os.getenv('TWINLAB_URL')}/emulators/{emulator_id}/torchscript"
+    headers = create_headers()
+    response = requests.post(url, headers=headers, json=params)
+    status = response.status_code
+    body = response.json()
+    return status, body
+
+
+@typechecked
+@check_status_code
+def get_emulator_torchscript(emulator_id: str, process_id: str) -> Tuple[int, dict]:
+    url = f"{os.getenv('TWINLAB_URL')}/emulators/{emulator_id}/torchscript/{process_id}"
+    headers = create_headers()
+    response = requests.get(url, headers=headers)
     status = response.status_code
     body = response.json()
     return status, body
