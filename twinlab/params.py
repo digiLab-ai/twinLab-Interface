@@ -10,6 +10,9 @@ from ._utils import remove_none_values
 from .dataset import Dataset
 from .sampling import LatinHypercube, Sampling
 
+# Ensure that all deprecation warnings are always shown. Otherwise, they are only shown once per session and warning can be missed.
+warnings.simplefilter("always", DeprecationWarning)
+
 
 # Logic to convert a DataFrame to a dictionary to allow serialisation
 def _convert_dataframe_to_dict(dictionary: dict, value: str):
@@ -214,7 +217,8 @@ class TrainParams(Params):
             Fidelity is used to differentiate the quality of individual data samples on which the emulator is being trained.
             The default value is ``None``, because this argument is not required unless a multi-fidelity model is being trained.
         class_column (Union[str, None], optional): The name of the column that contains the classification labels if training a mixture-of-experts model (``estimator_type="mixture_of_experts_gp"`` in EstimatorParams).
-            The classification labels distinguish different groups of data, which the emulator uses to train a set of expert models tailored to each group.
+            The classification labels distinguish different groups of data, which the emulator uses to train a set of expert models, with one expert tailored to each group.
+            If the training data contains ``n`` classes, the classes must be labelled from ``0`` to ``n-1``.
             The default value is ``None``, because this argument is not required unless a mixture-of-experts model is being trained.
         train_test_ratio (Union[float, None], optional): Specifies the fraction of training samples in the dataset.
             This must be a number beteen 0 and 1.
@@ -431,6 +435,11 @@ class PredictParams(Params):
         fidelity: Optional[str] = None,
     ):
         self.observation_noise = observation_noise
+        if fidelity:
+            warnings.warn(
+                "The 'fidelity' parameter is deprecated, and its use will have no effect on the predictions. Predictions by default assume the highest fidelity level (fidelity = 1) for the output(s).",
+                DeprecationWarning,
+            )
         self.fidelity = fidelity
 
     def unpack_parameters(self):
@@ -471,6 +480,11 @@ class SampleParams(Params):
     ):
         self.seed = seed
         self.observation_noise = observation_noise
+        if fidelity is not None:
+            warnings.warn(
+                "The 'fidelity' parameter is deprecated, and its use will have no effect on the samples. Samples by default assume the highest fidelity level (fidelity = 1) for the output(s).",
+                DeprecationWarning,
+            )
         self.fidelity = fidelity
 
     def unpack_parameters(self):
@@ -590,7 +604,7 @@ class CalibrateParams(Params):
             The default value is ``10,000``.
         n_chains (int, optional): The number of independent chains to use for the inversion process.
             More is better, so that the solution derived between indepent chains can be compared and convergence can be checked.
-            The default value is ``2``.
+            The default value is ``2`` and the maximum is ``4``.
         force_sequential (bool, optional): "Whether to force the chains to run sequentially, rather than in parallel."
             If ``True`` the sampling processes will run one sample at a time, which can be useful when parallel processing is not desired.
             The default value is ``False``.

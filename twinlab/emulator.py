@@ -215,6 +215,9 @@ class Emulator:
         but to also quantify the uncertainty in these predictions.
         This is extremely advantageous, because it allows for the reliability of the predictions to be quantified.
 
+        The training process will start on the twinLab cloud using the ID of the emulator previously instantiated (with `tl.Emulator(id=)`).
+        If that emulator has not been trained already, the training process will start directly. Otherwise, the process will required you to rename the emulator or delete the existing one (with `Emulator.delete()`).
+
         See the documentation for :func:`~params.TrainParams` for more information on the available training parameters.
         The documentation for :func:`~params.EstimatorParams` contains information about estimator types and kernels.
         Finally, the documentation for :func:`~params.ModelSelectionParams` details automatic model selection parameters.
@@ -970,6 +973,8 @@ class Emulator:
           The emulator is 95% confident that the true value lies within two standard deviations of the mean.
         - For a classification model the uncertainty is the probability of the predicted class, which is a measure of the confidence in the prediction.
 
+        If you are using an emulator trained on data from sources with different fidelity levels (a multi-fidelity emulator), the predictions will assume the highest fidelity level (fidelity = 1) for the output(s).
+
         See the documentation for :func:`~params.PredictParams` for more information on additional parameters that can be passed to predict.
 
         Args:
@@ -1048,6 +1053,8 @@ class Emulator:
         Each sample is a possible prediction of the emulator, and therefore a prediction of a possible new observation from the data-generation process.
         The covariance in the emulator predictions can therefore be explored, which is particularly useful for functional emulators.
         See the documentation for :func:`~params.SampleParams` for more information on additional parameters.
+
+        If you are using an emulator trained on data from sources with different fidelity levels (a multi-fidelity emulator), the sample(s) will assume the highest fidelity level (fidelity = 1) for the output(s).
 
         If the output of the multi-indexed DataFrame needs to be manipulated then we provide the convenience functions:
 
@@ -1276,6 +1283,11 @@ class Emulator:
                 x  0.496  0.013   0.471    0.521        0.0      0.0    2025.0    2538.0    1.0
 
         """
+        # Enforce limit on number of chains.
+        # Prevents the user from starting excessively long jobs.
+        if params.n_chains < 1 or params.n_chains > 4:
+            raise ValueError("Number of chains must be between 1 and 4.")
+
         unpacked_params = _process_request_dataframes(
             df_obs, params.unpack_parameters(), "dataset_obs"
         )
@@ -1447,7 +1459,6 @@ class Emulator:
             wait=True,
             verbose=False,
         )
-
         # Loop over iterations of learning
         for i in range(num_loops):
 
@@ -1465,7 +1476,8 @@ class Emulator:
 
             # Append new data to the dataset
             dataset.append(candidate_points)
-
+            # Delete the previous emulator before training again with the extra data. This is neccesary to use the same id.
+            self.delete()
             # Train model
             self.train(
                 dataset=dataset,
@@ -1480,7 +1492,7 @@ class Emulator:
             if verbose:
                 print(f"Iteration: {i+1}")
                 print("Suggested candidate point(s):")
-                pprint(candidate_points)
+                pprint(candidate_points[inputs])
                 print("Acquisition function value:")
                 print(acq_func_value)
                 print()
@@ -1812,7 +1824,8 @@ class Emulator:
         """
         Export your emulator using a valid file format.
         Currently twinLab support exporting emulators in the following formats:
-            - ``"torchscript"``: Export the emulator as a TorchScript model for easy inference in PyTorch. Please see the `Pytorch documentation <https://pytorch.org/docs/stable/jit.html#>`_ for more information on how to use TorchScript models.
+
+        - ``"torchscript"``: Export the emulator as a TorchScript model for easy inference in PyTorch. Please see the `Pytorch documentation <https://pytorch.org/docs/stable/jit.html#>`_ for more information on how to use TorchScript models.
 
         Args:
             file_path (str): The path to save the exported emulator.

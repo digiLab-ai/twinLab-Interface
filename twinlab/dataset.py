@@ -65,6 +65,8 @@ class Dataset:
     ) -> None:
         """Upload a dataset to the twinLab cloud so that it can be queried and used for training.
 
+        If a dataset has been uploaded previously for this Dataset object, this will require you to re-instantiate the dataset object with a new ID (`tl.Dataset("new_id")`) or delete the existing dataset object (`Dataset.delete`) before proceeding.
+
         Please note the largest dataset that can be uploaded is currently 5GB.
 
         When using twinLab emulators, note that training time scales cubically with the amount of data included.
