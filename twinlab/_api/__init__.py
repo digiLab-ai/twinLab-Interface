@@ -1,4 +1,4 @@
-from .core import get_user, get_versions
+from .core import get_user, get_account, get_versions
 from .datasets import (
     delete_dataset,
     get_dataset,
@@ -13,6 +13,9 @@ from .datasets import (
     post_dataset_analysis,
     post_dataset_append,
     post_dataset_summary,
+    post_dataset_record,
+    patch_dataset_lock,
+    patch_dataset_unlock,
 )
 from .designs import get_design, post_design
 from .emulators import (
@@ -38,4 +41,15 @@ from .emulators import (
     post_emulator_update,
     post_emulator_torchscript,
     get_emulator_torchscript,
+    post_emulator_fmu,
+    get_emulator_fmu,
+    patch_emulator_lock,
+    patch_emulator_unlock,
+)
+from .projects import (
+    get_projects,
+    post_project,
+    delete_project,
+    post_project_members_account,
+    delete_project_members_account,
 )

@@ -30,6 +30,14 @@ from .core import (
     user_information,
     versions,
 )
+
+from .project import (
+    create_project,
+    delete_project,
+    list_projects,
+    share_project,
+    unshare_project,
+)
 from .dataset import Dataset
 from .distributions import Distribution
 from .emulator import Emulator
@@ -51,4 +59,4 @@ from .params import (
 )
 from .prior import Prior
 from .sampling import Sampling
-from .settings import ValidStatus, ValidExportFormats
+from .settings import ValidStatus, ValidExportFormats, ValidFMUTypes, ValidFMUOS

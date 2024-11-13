@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "twinlab"
-version = "2.15.0"
+version = "2.16.0"
 description = "twinLab - Probabilistic Machine Learning for Engineers"
 homepage = "https://twinlab.ai"
 documentation = "https://twinlab.ai"
@@ -11,6 +11,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.13"
+kiwisolver = "=1.4.6"
 matplotlib = "^3.7"
 numpy = [
     { version = "^1.24", python = ">=3.8,<3.9" },

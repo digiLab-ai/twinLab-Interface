@@ -1,7 +1,9 @@
 import io
+import os
 import json
 import time
 import warnings
+from typing import Optional
 from datetime import datetime, timedelta
 from pprint import pprint
 
@@ -11,6 +13,7 @@ from typeguard import typechecked
 
 from ._version import __version__
 from .settings import ValidStatus
+from ._api import get_account, get_projects
 
 ALLOWED_DATAFRAME_SIZE = 5.5 * int(1e6)
 
@@ -18,6 +21,48 @@ PING_TIME_INITIAL = 1.0  # Seconds
 PING_FRACTIONAL_INCREASE = 0.1
 
 DATETIME_STRING_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+@typechecked
+def get_project_id(project_name: str, project_owner_email: str):
+
+    # Make api calls to get the project and project owner
+    _, project_owner_account = get_account(project_owner_email)
+
+    _, available_projects = get_projects()
+    available_projects = available_projects["projects"]
+
+    # List comprehension to find the matching dictionary
+    matching_project = next(
+        (
+            proj  # Use a different variable name here
+            for proj in available_projects
+            if proj["name"] == project_name
+            and proj["owner_id"] == project_owner_account["_id"]
+        ),
+        None,  # Default value if no match is found
+    )
+
+    if not matching_project:
+        raise ValueError("No project found with the given name and owner.")
+    else:
+        project_id = str(matching_project["_id"])
+
+    return project_id
+
+
+@typechecked
+def match_project(project_name: str, project_owner_email: Optional[str] = None) -> str:
+    if project_name == "personal" and project_owner_email is None:
+        project_id = "personal"
+    else:
+
+        if not project_owner_email:
+            project_owner_email = os.getenv("TWINLAB_USER")
+
+        project_id = get_project_id(project_name, project_owner_email)
+
+    return project_id
 
 
 @typechecked

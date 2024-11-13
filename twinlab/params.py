@@ -87,6 +87,29 @@ class EstimatorParams(Params):
               Predictions from this model are binary, and the returned error is the class probability.
             - ``"zero_noise_gp"``: A Gaussian Process model that is trained with zero noise.
 
+    .. table:: Estimator types compatible with custom kernels
+
+        +-------------------------------------+---+
+        | ``"single_task_gp"``                | ✓ |
+        +-------------------------------------+---+
+        | ``"fixed_noise_gp"``                | ✓ |
+        +-------------------------------------+---+
+        | ``"heteroskedastic_gp"``            | ✗ |
+        +-------------------------------------+---+
+        | ``"variational_gp"``                | ✓ |
+        +-------------------------------------+---+
+        | ``"mixed_single_task_gp"``          | ✗ |
+        +-------------------------------------+---+
+        | ``"multi_fidelity_gp"``             | ✗ |
+        +-------------------------------------+---+
+        | ``"fixed_noise_multi_fidelity_gp"`` | ✗ |
+        +-------------------------------------+---+
+        | ``"mixture_of_experts_gp"``         | ✗ |
+        +-------------------------------------+---+
+        | ``"classification_gp"``             | ✓ |
+        +-------------------------------------+---+
+        | ``"zero_noise_gp"``                 | ✓ |
+        +-------------------------------------+---+
     """
 
     def __init__(
@@ -109,6 +132,17 @@ class EstimatorParams(Params):
         self.detrend = detrend
         self.kernel = kernel
         self.estimator_type = estimator_type
+
+        if estimator_type == "fixed_noise_gp":
+            warnings.warn(
+                "The `fixed_noise_gp` estimator type is deprecated and will be removed in a future release. Please use the `single_task_gp` with a noise dataframe instead.",
+                DeprecationWarning,
+            )
+        elif estimator_type == "fixed_noise_multi_fidelity_gp":
+            warnings.warn(
+                "The `fixed_noise_multi_fidelity_gp` estimator type is deprecated and will be removed in a future release. Please use the `multi_fidelity_gp` with a noise dataframe instead.",
+                DeprecationWarning,
+            )
 
     def unpack_parameters(self):
         params = {
@@ -172,6 +206,17 @@ class ModelSelectionParams(Params):
         self.base_kernels = base_kernels
         self.depth = depth
         self.beam = beam
+
+        if evaluation_metric != "MSLL":
+            warnings.warn(
+                "The `evaluation_metric` parameter is deprecated and will be removed in a future release. Please use the `ScoreParams` class instead.",
+                DeprecationWarning,
+            )
+        if val_ratio != 0.2:
+            warnings.warn(
+                "The `val_ratio` parameter is deprecated and will be removed in a future release. Please use the `ScoreParams` class instead.",
+                DeprecationWarning,
+            )
 
     def unpack_parameters(self):
         params = {

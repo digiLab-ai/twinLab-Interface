@@ -26,6 +26,28 @@ class ValidExportFormats(Enum):
         return [format.value for format in ValidExportFormats]
 
 
+# FMU Valid Export Formats
+
+
+class ValidFMUTypes(Enum):
+    MODEL_EXCHANGE = "model-exchange"
+    # CO_SIMULATION = "CoSimulation"
+
+    @staticmethod
+    def list():
+        return [fmu_type.value for fmu_type in ValidFMUTypes]
+
+
+class ValidFMUOS(Enum):
+    WINDOWS = "win64"
+    # LINUX = "linux"
+    # MAC = "darwin64"
+
+    @staticmethod
+    def list():
+        return [os.value for os in ValidFMUOS]
+
+
 # Parameters
 DEFAULT_TWINLAB_URL = "https://twinlab.digilab.co.uk/v3"
 CHECK_DATASETS = True  # Check datasets are sensible before uploading

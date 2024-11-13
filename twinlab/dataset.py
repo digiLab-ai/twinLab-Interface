@@ -1,5 +1,6 @@
 # Standard imports
 import io
+import os
 import uuid
 from typing import List
 
@@ -21,12 +22,12 @@ DEPRECATION_MESSAGE = (
 )
 
 
-def _process_request_dataframes(df: pd.DataFrame) -> str:
+def _process_request_dataframes(project_id: str, df: pd.DataFrame) -> str:
     # Create a unique ID for the dataset
     dataset_id = str(uuid.uuid4())
 
     # Generate a temporary upload URL - this URL does not have the 5.5mb limit
-    _, response = _api.get_dataset_temporary_upload_url(dataset_id)
+    _, response = _api.get_dataset_temporary_upload_url(project_id, dataset_id)
     url = _utils.get_value_from_body("url", response)
 
     # Upload the dataframe to the presigned URL
@@ -51,8 +52,14 @@ class Dataset:
 
     """
 
-    def __init__(self, id: str):
+    def __init__(
+        self,
+        id: str,
+        project: str = "personal",
+        project_owner: str = None,
+    ):
         self.id = id
+        self.project_id = _utils.match_project(project, project_owner)
 
     def __str__(self):
         return f"Dataset ID: {self.id}"
@@ -87,7 +94,7 @@ class Dataset:
         """
         # Upload the file (either via link or directly)
         if USE_UPLOAD_URL:
-            _, response = _api.get_dataset_upload_url(self.id)
+            _, response = _api.get_dataset_upload_url(self.project_id, self.id)
             upload_url = _utils.get_value_from_body("url", response)
             _utils.upload_dataframe_to_presigned_url(
                 df,
@@ -95,15 +102,16 @@ class Dataset:
                 verbose=verbose,
                 check=settings.CHECK_DATASETS,
             )
+            response = _api.post_dataset_record(self.project_id, self.id)
         else:
             csv_string = _utils.get_csv_string(df)
-            _, response = _api.post_dataset(self.id, csv_string)
+            _, response = _api.post_dataset(self.project_id, self.id, csv_string)
             if verbose:
                 detail = _utils.get_value_from_body("detail", response)
                 print(detail)
 
         # Create the dataset summary
-        _, response = _api.post_dataset_summary(self.id)
+        _, response = _api.post_dataset_summary(self.project_id, self.id)
         if verbose:
             detail = _utils.get_value_from_body("detail", response)
             print(detail)
@@ -135,8 +143,9 @@ class Dataset:
 
         """
         # Do the appending
-        dataset_id = _process_request_dataframes(df)
+        dataset_id = _process_request_dataframes(self.project_id, df)
         _, response = _api.post_dataset_append(
+            self.project_id,
             self.id,
             dataset_id,
         )
@@ -145,7 +154,7 @@ class Dataset:
             print(detail)
 
         # Update the dataset summary
-        _, response = _api.post_dataset_summary(self.id)
+        _, response = _api.post_dataset_summary(self.project_id, self.id)
         if verbose:
             detail = _utils.get_value_from_body("detail", response)
             print(detail)
@@ -189,12 +198,16 @@ class Dataset:
                 "Singular value decomposition should use more than one column. Please retry with more than one input or output column."
             )
 
-        _, response = _api.post_dataset_analysis(self.id, columns)
+        _, response = _api.post_dataset_analysis(self.project_id, self.id, columns)
 
         process_id = _utils.get_value_from_body("process_id", response)
 
         response = _utils.wait_for_job_completion(
-            _api.get_dataset_process, self.id, process_id, verbose=verbose
+            _api.get_dataset_process,
+            self.project_id,
+            self.id,
+            process_id,
+            verbose=verbose,
         )
 
         response = _utils.process_result_response(response)
@@ -278,7 +291,7 @@ class Dataset:
                 9  0.392118  0.845795
 
         """
-        _, response = _api.get_dataset(self.id)
+        _, response = _api.get_dataset(self.project_id, self.id)
         df = _utils.process_dataset_response(response)
         if verbose:
             print("Dataset:")
@@ -314,7 +327,7 @@ class Dataset:
                 max     0.980764   0.921553
 
         """
-        _, response = _api.get_dataset_summary(self.id)
+        _, response = _api.get_dataset_summary(self.project_id, self.id)
 
         csv_string = _utils.get_value_from_body("summary", response)
         csv_string = io.StringIO(csv_string)
@@ -340,7 +353,51 @@ class Dataset:
                 dataset.delete()
 
         """
-        _, response = _api.delete_dataset(self.id)
+        _, response = _api.delete_dataset(self.project_id, self.id)
+
+        if verbose:
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
+
+    @typechecked
+    def lock(self, verbose: bool = False) -> None:
+        """Lock a dataset that was previously uploaded to the twinLab cloud.
+
+        Locking a dataset prevents it from being deleted or modified.
+
+        Args:
+            verbose (bool, optional): Display confirmation.
+
+        Example:
+            .. code-block:: python
+
+                dataset = tl.Dataset("quickstart")
+                dataset.lock()
+
+        """
+        _, response = _api.patch_dataset_lock(self.project_id, self.id)
+
+        if verbose:
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
+
+    @typechecked
+    def unlock(self, verbose: bool = False) -> None:
+        """Unlock a dataset that was previously uploaded to the twinLab cloud.
+
+        Unlocking a dataset allows it to be deleted or modified.
+
+        Args:
+            verbose (bool, optional): Display confirmation.
+
+        Example:
+            .. code-block:: python
+
+                dataset = tl.Dataset("quickstart")
+                dataset.unlock()
+
+        """
+        _, response = _api.patch_dataset_unlock(self.project_id, self.id)
 
         if verbose:
             detail = _utils.get_value_from_body("detail", response)

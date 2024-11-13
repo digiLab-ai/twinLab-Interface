@@ -1,12 +1,12 @@
 import os
 from pprint import pprint
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 from typeguard import typechecked
 
 from . import _api, _utils
-from ._utils import get_value_from_body, convert_time_formats_in_status
+from ._utils import get_value_from_body, convert_time_formats_in_status, match_project
 from .settings import ValidStatus
 
 
@@ -219,8 +219,13 @@ def versions(verbose: bool = False) -> Dict[str, str]:
 
 
 @typechecked
-def list_datasets(verbose: bool = False) -> List[str]:
-    """List datasets that have been uploaded to the user's twinLab cloud account.
+def list_datasets(
+    project_name: str = "personal",
+    project_owner: Optional[str] = None,
+    verbose: bool = False,
+) -> List[str]:
+    """List datasets that have been uploaded to a project in the user's twinLab cloud account.
+    If no project is specified, the default project is the user's `"personal"` project.
 
     These datasets can be used for training emulators and for other operations.
     New datasets can be uploaded using the ``upload`` method of the ``Dataset`` class.
@@ -242,7 +247,10 @@ def list_datasets(verbose: bool = False) -> List[str]:
             ['biscuits', 'gardening', 'force-energy', 'combusion']
 
     """
-    _, response = _api.get_datasets()
+
+    project_id = match_project(project_name, project_owner)
+
+    _, response = _api.get_datasets(project_id)
     datasets = get_value_from_body("datasets", response)
     if verbose:
         print("Datasets:")
@@ -252,13 +260,18 @@ def list_datasets(verbose: bool = False) -> List[str]:
 
 @typechecked
 def list_emulators(
+    project_name: str = "personal",
+    project_owner: Optional[str] = None,
     verbose: bool = False,
 ) -> List[str]:
-    """List trained emulators that exist in the user's twinLab cloud account.
+    """List trained emulators that exist in a project on the user's twinLab cloud account.
+        If no project is specified, the default project is the user's `"personal"` project.
 
     These trained emulators can be used for a variety of inference operations (see methods of the Emulator class).
 
     Args:
+        project_name (str): The project for which you would like to list the emulators. This will default to your `"personal"` project.
+        project_owner (str): The email of the owner of the project that you want to list the datasets of.
         verbose (bool, optional): Display information about the operation while running.
 
     Returns:
@@ -275,7 +288,10 @@ def list_emulators(
             ['biscuits', 'gardening', 'new-emulator', 'my-emulator']
 
     """
-    _, response = _api.get_emulators()
+
+    project_id = match_project(project_name, project_owner)
+
+    _, response = _api.get_emulators(project_id)
     emulators = _utils.get_value_from_body("emulators", response)
 
     if verbose:
@@ -287,13 +303,18 @@ def list_emulators(
 
 @typechecked
 def list_emulators_statuses(
+    project_name: str = "personal",
+    project_owner: Optional[str] = None,
     verbose: bool = False,
 ) -> List[dict]:
-    """List the status of training and trained emulators, as well as those that have failed to train.
+    """List the statuses of training and trained emulators in a project, as well as those that have failed to train
+    If no project is specified, the default project is the user's `"personal"` project.
 
     This includes the start and end times of training, the status of the emulator, and any error messages if the emulator failed to train.
 
     Args:
+        project_name (str): The project for which you would like to list the emulators statuses. This will default to your `"personal"` project.
+        project_owner (str, optional): The email of the owner of the project that you want to list the datasets of.
         verbose (bool, optional): Display information about the operation while running.
 
     Returns:
@@ -330,7 +351,9 @@ def list_emulators_statuses(
 
     """
 
-    _, response = _api.get_emulators_statuses()
+    project_id = match_project(project_name, project_owner)
+
+    _, response = _api.get_emulators_statuses(project_id)
     emulator_statuses = _utils.get_value_from_body("emulators_statuses", response)
 
     # Print detailed emulator information to screen

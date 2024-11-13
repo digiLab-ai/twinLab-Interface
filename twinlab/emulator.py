@@ -1,5 +1,6 @@
 # Standard imports
 import io
+import os
 import sys
 import time
 import uuid
@@ -21,6 +22,7 @@ from ._utils import (
     EmulatorResultsAdapter,
     convert_time_formats_in_status,
     download_file_from_url,
+    match_project,
 )
 from .dataset import Dataset
 from .params import (
@@ -35,7 +37,7 @@ from .params import (
     TrainParams,
 )
 from .prior import Prior
-from .settings import ValidExportFormats, ValidStatus
+from .settings import ValidExportFormats, ValidStatus, ValidFMUOS, ValidFMUTypes
 
 # Parameters
 ACQ_FUNC_DICT = {  # TODO: Delete this?
@@ -73,7 +75,7 @@ def _dataset_over_memory_limit(dataset_csv: str) -> pd.DataFrame:
 
 
 def _process_request_dataframes(
-    df: pd.DataFrame, params: dict, dataset_name: str
+    df: pd.DataFrame, params: dict, dataset_name: str, project_id: str
 ) -> dict:
 
     # Create a unique ID for the dataset
@@ -86,7 +88,7 @@ def _process_request_dataframes(
     if _dataset_over_memory_limit(dataset_csv_string):
 
         # Generate a temporary upload URL - this URL does not have the 5.5mb limit
-        _, response = _api.get_dataset_temporary_upload_url(dataset_id)
+        _, response = _api.get_dataset_temporary_upload_url(project_id, dataset_id)
         url = _utils.get_value_from_body("url", response)
 
         # Upload the dataframe to the presigned URL
@@ -121,12 +123,18 @@ class Emulator:
             If an emulator is specified that does not currently exist, then a new emulator will be instantiated.
             Otherwise the corresponding emulator will be loaded from the cloud.
             Be sure to double check which emulators have been created using ``tl.list_emulators``.
+        project (str): Name of the project to which the emulator belongs. Defaults to "personal".
+        project_owner (str): Email address of the project owner. Defaults to the current user.
     """
 
     @typechecked
-    def __init__(self, id: str):
+    def __init__(
+        self, id: str, project: str = "personal", project_owner: Optional[str] = None
+    ):
         self.id = id
+        self.project_id = match_project(project, project_owner)
 
+    # TODO: DO designs
     @typechecked
     def design(
         self,
@@ -306,17 +314,21 @@ class Emulator:
 
         # Send training request
         _, request_response = _api.post_emulator(
-            self.id, emulator_params, training_params, processor=PROCESSOR
+            self.project_id,
+            self.id,
+            emulator_params,
+            training_params,
+            processor=PROCESSOR,
         )
         if verbose:
             detail = _utils.get_value_from_body("detail", request_response)
             print(detail)
         if not wait:
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_status(self.id)
+            _api.get_emulator_status(self.project_id, self.id)
         else:
             _utils.wait_for_job_completion(
-                _api.get_emulator_status, self.id, verbose=verbose
+                _api.get_emulator_status, self.project_id, self.id, verbose=verbose
             )
             if verbose:
                 print(f"Training of emulator {self.id} is complete!")
@@ -346,7 +358,7 @@ class Emulator:
                 }
 
         """
-        _, response = _api.get_emulator_status(self.id)
+        _, response = _api.get_emulator_status(self.project_id, self.id)
         status_dict = _utils.get_value_from_body("status_detail", response)
 
         # Convert the time stamps into a nicer format
@@ -400,7 +412,7 @@ class Emulator:
 
         """
 
-        _, response = _api.get_emulator_parameters(self.id)
+        _, response = _api.get_emulator_parameters(self.project_id, self.id)
         parameters = _utils.get_value_from_body("parameters", response)
         if verbose:
             print("Emulator parameters summary:")
@@ -436,7 +448,9 @@ class Emulator:
                 7  0.684830 -0.960764
 
         """
-        _, response = _api.get_emulator_data(self.id, dataset_type="training_data")
+        _, response = _api.get_emulator_data(
+            self.project_id, self.id, dataset_type="training_data"
+        )
 
         if response.get("dataset"):
             csv = _utils.get_value_from_body("dataset", response)
@@ -478,7 +492,9 @@ class Emulator:
                 1  0.392118  0.845795
 
         """
-        _, response = _api.get_emulator_data(self.id, dataset_type="testing_data")
+        _, response = _api.get_emulator_data(
+            self.project_id, self.id, dataset_type="testing_data"
+        )
 
         if response.get("dataset"):
             csv = _utils.get_value_from_body("dataset", response)
@@ -515,7 +531,7 @@ class Emulator:
                 ['predict-distinct-honey-milk', 'sample-four-hungry-wolves']
 
         """
-        _, response = _api.get_emulator_processes(self.id)
+        _, response = _api.get_emulator_processes(self.project_id, self.id)
         processes = _utils.get_value_from_body("process_ids", response)
 
         if verbose:
@@ -561,7 +577,7 @@ class Emulator:
                 ]
 
         """
-        _, response = _api.get_emulator_processes_statuses(self.id)
+        _, response = _api.get_emulator_processes_statuses(self.project_id, self.id)
         process_statuses = _utils.get_value_from_body("process_statuses", response)
 
         # Print detailed emulator information to screen
@@ -637,7 +653,7 @@ class Emulator:
 
         """
         # Get the status of the process
-        _, response = _api.get_emulator_process(self.id, process_id)
+        _, response = _api.get_emulator_process(self.project_id, self.id, process_id)
         status = ValidStatus(response["status"])
 
         if status is ValidStatus.FAILURE:
@@ -647,7 +663,9 @@ class Emulator:
         else:
 
             # Get the result of the process
-            _, response = _api.get_emulator_process(self.id, process_id)
+            _, response = _api.get_emulator_process(
+                self.project_id, self.id, process_id
+            )
 
             # Process the response according to the method used
             method = process_id.split("-")[0]
@@ -723,7 +741,7 @@ class Emulator:
 
 
         """
-        _, response = _api.get_emulator_summary(self.id)
+        _, response = _api.get_emulator_summary(self.project_id, self.id)
         summary = _utils.get_value_from_body("summary", response)
         del summary["data_diagnostics"]
 
@@ -799,11 +817,13 @@ class Emulator:
         """
 
         params = {}
-        params = _process_request_dataframes(df, params, "dataset")
+        params = _process_request_dataframes(df, params, "dataset", self.project_id)
         if df_std is not None:
-            params = _process_request_dataframes(df_std, params, "dataset_std")
+            params = _process_request_dataframes(
+                df_std, params, "dataset_std", self.project_id
+            )
 
-        _, body = _api.post_emulator_update(self.id, params)
+        _, body = _api.post_emulator_update(self.project_id, self.id, params)
 
         process_id = body["process_id"]
         if verbose:
@@ -811,12 +831,16 @@ class Emulator:
 
         if not wait:
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_process(self.id, process_id)
+            _api.get_emulator_process(self.project_id, self.id, process_id)
             return process_id
 
         # Await the completion of the scoring process
         response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
+            _api.get_emulator_process,
+            self.project_id,
+            self.id,
+            process_id,
+            verbose=verbose,
         )
 
         update = EmulatorResultsAdapter("update", response).adapt_result(
@@ -876,13 +900,19 @@ class Emulator:
                 pd.DataFrame({'y1': [1.8], 'y2': [0.9]})
         """
 
-        _, response = _api.post_emulator_score(self.id, params.unpack_parameters())
+        _, response = _api.post_emulator_score(
+            self.project_id, self.id, params.unpack_parameters()
+        )
 
         process_id = _utils.get_value_from_body("process_id", response)
 
         # Await the completion of the scoring process
         response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
+            _api.get_emulator_process,
+            self.project_id,
+            self.id,
+            process_id,
+            verbose=verbose,
         )
 
         score = EmulatorResultsAdapter("score", response).adapt_result(verbose=verbose)
@@ -938,13 +968,19 @@ class Emulator:
 
         """
         # TODO: Maybe include how to plot calibration curve in a docstring code snippet.
-        _, response = _api.post_emulator_benchmark(self.id, params.unpack_parameters())
+        _, response = _api.post_emulator_benchmark(
+            self.project_id, self.id, params.unpack_parameters()
+        )
 
         process_id = _utils.get_value_from_body("process_id", response)
 
         # Await the completion of the process
         response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
+            _api.get_emulator_process,
+            self.project_id,
+            self.id,
+            process_id,
+            verbose=verbose,
         )
 
         benchmark = EmulatorResultsAdapter("benchmark", response).adapt_result(
@@ -1013,9 +1049,9 @@ class Emulator:
         """
 
         unpacked_params = _process_request_dataframes(
-            df, params.unpack_parameters(), "dataset"
+            df, params.unpack_parameters(), "dataset", self.project_id
         )
-        _, body = _api.post_emulator_predict(self.id, unpacked_params)
+        _, body = _api.post_emulator_predict(self.project_id, self.id, unpacked_params)
 
         process_id = body["process_id"]
         if verbose:
@@ -1023,11 +1059,15 @@ class Emulator:
 
         if not wait:
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_process(self.id, process_id)
+            _api.get_emulator_process(self.project_id, self.id, process_id)
             return process_id
 
         response = _utils.wait_for_job_completion(
-            _api.get_emulator_process, self.id, process_id, verbose=verbose
+            _api.get_emulator_process,
+            self.project_id,
+            self.id,
+            process_id,
+            verbose=verbose,
         )
 
         df_mean, df_std = EmulatorResultsAdapter("predict", response).adapt_result(
@@ -1092,11 +1132,13 @@ class Emulator:
 
         """
         unpacked_params = _process_request_dataframes(
-            df, params.unpack_parameters(), "dataset"
+            df, params.unpack_parameters(), "dataset", self.project_id
         )
         unpacked_params["num_samples"] = num_samples
 
-        _, response = _api.post_emulator_sample(self.id, unpacked_params)
+        _, response = _api.post_emulator_sample(
+            self.project_id, self.id, unpacked_params
+        )
 
         process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
@@ -1104,11 +1146,15 @@ class Emulator:
 
         if not wait:
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_process(self.id, process_id)
+            _api.get_emulator_process(self.project_id, self.id, process_id)
             return process_id
         else:
             response = _utils.wait_for_job_completion(
-                _api.get_emulator_process, self.id, process_id, verbose=verbose
+                _api.get_emulator_process,
+                self.project_id,
+                self.id,
+                process_id,
+                verbose=verbose,
             )
             df = EmulatorResultsAdapter("sample", response).adapt_result(
                 verbose=verbose
@@ -1218,7 +1264,9 @@ class Emulator:
         else:
             unpacked_params["acq_func"] = acq_func
 
-        _, response = _api.post_emulator_recommend(self.id, unpacked_params)
+        _, response = _api.post_emulator_recommend(
+            self.project_id, self.id, unpacked_params
+        )
 
         process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
@@ -1226,11 +1274,15 @@ class Emulator:
 
         if not wait:
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_process(self.id, process_id)
+            _api.get_emulator_process(self.project_id, self.id, process_id)
             return process_id
         else:
             response = _utils.wait_for_job_completion(
-                _api.get_emulator_process, self.id, process_id, verbose=verbose
+                _api.get_emulator_process,
+                self.project_id,
+                self.id,
+                process_id,
+                verbose=verbose,
             )
             df, acq_func_value = EmulatorResultsAdapter(
                 "recommend", response
@@ -1289,13 +1341,15 @@ class Emulator:
             raise ValueError("Number of chains must be between 1 and 4.")
 
         unpacked_params = _process_request_dataframes(
-            df_obs, params.unpack_parameters(), "dataset_obs"
+            df_obs, params.unpack_parameters(), "dataset_obs", self.project_id
         )
         unpacked_params = _process_request_dataframes(
-            df_std, unpacked_params, "dataset_obs_std"
+            df_std, unpacked_params, "dataset_obs_std", self.project_id
         )
 
-        _, response = _api.post_emulator_calibrate(self.id, unpacked_params)
+        _, response = _api.post_emulator_calibrate(
+            self.project_id, self.id, unpacked_params
+        )
 
         process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
@@ -1303,11 +1357,15 @@ class Emulator:
 
         if not wait:
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_process(self.id, process_id)
+            _api.get_emulator_process(self.project_id, self.id, process_id)
             return process_id
         else:
             response = _utils.wait_for_job_completion(
-                _api.get_emulator_process, self.id, process_id, verbose=verbose
+                _api.get_emulator_process,
+                self.project_id,
+                self.id,
+                process_id,
+                verbose=verbose,
             )
             df = EmulatorResultsAdapter("calibrate", response).adapt_result(
                 verbose=verbose
@@ -1356,7 +1414,9 @@ class Emulator:
                 0  0.845942
 
         """
-        _, response = _api.post_emulator_maximize(self.id, params.unpack_parameters())
+        _, response = _api.post_emulator_maximize(
+            self.project_id, self.id, params.unpack_parameters()
+        )
 
         process_id = _utils.get_value_from_body("process_id", response)
         if verbose:
@@ -1364,11 +1424,15 @@ class Emulator:
 
         if not wait:
             time.sleep(NOT_WAIT_TIME)
-            _api.get_emulator_process(self.id, process_id)
+            _api.get_emulator_process(self.project_id, self.id, process_id)
             return process_id
         else:
             response = _utils.wait_for_job_completion(
-                _api.get_emulator_process, self.id, process_id, verbose=verbose
+                _api.get_emulator_process,
+                self.project_id,
+                self.id,
+                process_id,
+                verbose=verbose,
             )
             df = EmulatorResultsAdapter("maximize", response).adapt_result(
                 verbose=verbose
@@ -1527,7 +1591,7 @@ class Emulator:
                 emulator.delete()
 
         """
-        _, response = _api.delete_emulator(self.id)
+        _, response = _api.delete_emulator(self.project_id, self.id)
         if verbose:
             detail = _utils.get_value_from_body("detail", response)
             print(detail)
@@ -1581,7 +1645,7 @@ class Emulator:
         """
 
         # Get information about inputs/outputs from the emulator
-        _, response = _api.get_emulator_summary(self.id)
+        _, response = _api.get_emulator_summary(self.project_id, self.id)
         inputs = set(response["summary"]["data_diagnostics"]["inputs"].keys())
         outputs = set(response["summary"]["data_diagnostics"]["outputs"].keys())
 
@@ -1719,7 +1783,7 @@ class Emulator:
         """
 
         # Get information about inputs/outputs from the emulator
-        _, response = _api.get_emulator_summary(self.id)
+        _, response = _api.get_emulator_summary(self.project_id, self.id)
         inputs = set(response["summary"]["data_diagnostics"]["inputs"].keys())
         outputs = set(response["summary"]["data_diagnostics"]["outputs"].keys())
 
@@ -1828,7 +1892,7 @@ class Emulator:
         - ``"torchscript"``: Export the emulator as a TorchScript model for easy inference in PyTorch. Please see the `Pytorch documentation <https://pytorch.org/docs/stable/jit.html#>`_ for more information on how to use TorchScript models.
 
         Args:
-            file_path (str): The path to save the exported emulator.
+            file_path (str): The local path to save the exported emulator.
             format (str): The format in which to export the emulator. Valid strings include ``"torchscript"``.
             observation_noise (bool, optional): If supported by your emulator, setting this to ``True`` means the emulator will be exported with observation noise.
             verbose (bool, optional): Display detailed information about the operation while running.
@@ -1857,17 +1921,125 @@ class Emulator:
             # First check if the .pt file already exists
 
             _, response = _api.post_emulator_torchscript(
-                self.id, {"observation_noise": observation_noise}
+                self.project_id, self.id, {"observation_noise": observation_noise}
             )
             print(response)
             process_id = _utils.get_value_from_body("process_id", response)
 
             response = _utils.wait_for_job_completion(
-                _api.get_emulator_torchscript, self.id, process_id, verbose=False
+                _api.get_emulator_torchscript,
+                self.project_id,
+                self.id,
+                process_id,
+                verbose=False,
             )
 
             result_url = response["result_url"]
             download_file_from_url(result_url, file_path)
+
+        if verbose:
+            print(f"Emulator exported to {file_path} successfully.")
+
+    @typechecked
+    def lock(self, verbose: bool = True) -> None:
+        """Lock the emulator to prevent further training.
+
+        This method will lock the emulator, preventing further training or deleting.
+
+        Args:
+            verbose (bool, optional): Display confirmation.
+
+        Examples:
+            .. code-block:: python
+
+                emulator = tl.Emulator("emulator_id")
+                emulator.lock()
+
+        """
+        _, response = _api.patch_emulator_lock(self.project_id, self.id)
+
+        if verbose:
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
+
+    @typechecked
+    def unlock(self, verbose: bool = True) -> None:
+        """Unlock the emulator to allow further training.
+
+        This method will unlock the emulator, allowing further training or deleting.
+
+        Args:
+            verbose (bool, optional): Display confirmation.
+
+        Examples:
+            .. code-block:: python
+
+                emulator = tl.Emulator("emulator_id")
+                emulator.unlock()
+
+        """
+        _, response = _api.patch_emulator_unlock(
+            self.project_id,
+            self.id,
+        )
+
+        if verbose:
+            detail = _utils.get_value_from_body("detail", response)
+            print(detail)
+
+    @typechecked
+    def fmu(
+        self,
+        file_path: str,
+        states: dict,
+        type: str = "model-exchange",
+        os: str = "win64",
+        verbose: bool = True,
+    ) -> None:
+        """
+        Export your emulator as a Functional Mock-up Unit (FMU) following the FMI 2.0 standard.
+        The FMU will be compatible for the specified operating system (by default, Windows 64-bit).
+        Args:
+            file_path (str): The path to save the exported emulator.
+            states (dict): A dictionary mapping each input state to the corresponding output derivative, used to update inputs during simulations post-integration. Keys in the dictionary represent the input state names, while values specify the associated output derivative names.
+            The dictionary length must match the number of emulator outputs, with each output assigned to one unique input. No output should be repeated within the mapping, ensuring comprehensive coverage of emulator outputs.
+            type (str, optional): The type of FMU to export. Currently only ``"model-exchange"`` is supported.
+            os (str, optional): The operating system to export the FMU for. Currently only ``"win64"`` is supported.
+            verbose (bool, optional): Display detailed information about the operation while running.
+        Returns:
+            None
+        Examples:
+            .. code-block:: python
+                emulator = tl.Emulator(id="emulator_name")
+                emulator.train(dataset, inputs=["x1","x2","x3","x4"], outputs=["der(x1)","der(x2)"], params)
+                emulator.fmu(file_path="emulator.fmu", states={"x1":"der(x1)", "x2":"der(x2)"})
+        """
+
+        # Assert the format is in the valid enum
+        try:
+            fmu_type_enum = ValidFMUTypes(type)
+        except ValueError as e:
+            raise ValueError(
+                f"`'{type}'` is not a supported FMU type. Currently twinLab support the following formats: {ValidFMUTypes.list()}"
+            ) from e
+
+        try:
+            os_enum = ValidFMUOS(os)
+        except ValueError as e:
+            raise ValueError(
+                f"`'{os}'` is not currently supported. Please choose from one of the following operation systems: {ValidFMUOS.list()}"
+            ) from e
+
+        params = {"states": states}
+        _, response = _api.post_emulator_fmu(self.id, params)
+        process_id = _utils.get_value_from_body("process_id", response)
+
+        response = _utils.wait_for_job_completion(
+            _api.get_emulator_fmu, self.id, process_id, verbose=False
+        )
+
+        result_url = response["result_url"]
+        download_file_from_url(result_url, file_path)
 
         if verbose:
             print(f"Emulator exported to {file_path} successfully.")
