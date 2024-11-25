@@ -1,6 +1,5 @@
 # Standard imports
 import io
-import os
 import sys
 import time
 import uuid
@@ -37,7 +36,7 @@ from .params import (
     TrainParams,
 )
 from .prior import Prior
-from .settings import ValidExportFormats, ValidStatus, ValidFMUOS, ValidFMUTypes
+from .settings import ValidExportFormats, ValidFMUOS, ValidFMUTypes, ValidStatus
 
 # Parameters
 ACQ_FUNC_DICT = {  # TODO: Delete this?
@@ -452,17 +451,16 @@ class Emulator:
             self.project_id, self.id, dataset_type="training_data"
         )
 
-        if response.get("dataset"):
+        if response.get("dataset", None):
             csv = _utils.get_value_from_body("dataset", response)
-            csv = io.StringIO(csv)
-            df_train = pd.read_csv(csv, sep=",", index_col=0)
         elif response["dataset_url"]:
             url = response["dataset_url"]
-            data_json = _utils.download_dataframe_from_presigned_url(url)
-            csv = data_json["training_data"]
-            df_train = pd.read_csv(csv, sep=",", index_col=0)
+            data_json = _utils.download_result_from_presigned_url(url)
+            csv = data_json["testing_data"]
         else:
             raise ValueError("No dataset found in the response.")
+        csv = io.StringIO(csv)
+        df_train = pd.read_csv(csv, sep=",", index_col=0)
         if verbose:
             print("Training data")
             pprint(df_train)
@@ -496,15 +494,17 @@ class Emulator:
             self.project_id, self.id, dataset_type="testing_data"
         )
 
-        if response.get("dataset"):
+        if response.get("dataset", None):
+            print(response)
             csv = _utils.get_value_from_body("dataset", response)
-            csv = io.StringIO(csv)
-            df_test = pd.read_csv(csv, sep=",", index_col=0)
         elif response["dataset_url"]:
             url = response["dataset_url"]
-            data_json = _utils.download_dataframe_from_presigned_url(url)
+            data_json = _utils.download_result_from_presigned_url(url)
             csv = data_json["testing_data"]
-            df_test = pd.read_csv(csv, sep=",", index_col=0)
+        else:
+            raise ValueError("No dataset found in the response.")
+        csv = io.StringIO(csv)
+        df_test = pd.read_csv(csv, sep=",", index_col=0)
         if verbose:
             print("Test data")
             pprint(df_test)
@@ -1996,20 +1996,23 @@ class Emulator:
         os: str = "win64",
         verbose: bool = True,
     ) -> None:
-        """
-        Export your emulator as a Functional Mock-up Unit (FMU) following the FMI 2.0 standard.
+        """Export your emulator as a Functional Mock-up Unit (FMU) following the FMI 2.0 standard.
+
         The FMU will be compatible for the specified operating system (by default, Windows 64-bit).
+
         Args:
             file_path (str): The path to save the exported emulator.
-            states (dict): A dictionary mapping each input state to the corresponding output derivative, used to update inputs during simulations post-integration. Keys in the dictionary represent the input state names, while values specify the associated output derivative names.
-            The dictionary length must match the number of emulator outputs, with each output assigned to one unique input. No output should be repeated within the mapping, ensuring comprehensive coverage of emulator outputs.
+            states (dict): A dictionary mapping each input state to the corresponding output derivative, used to update inputs during simulations post-integration. Keys in the dictionary represent the input state names, while values specify the associated output derivative names. The dictionary length must match the number of emulator outputs, with each output assigned to one unique input. No output should be repeated within the mapping, ensuring comprehensive coverage of emulator outputs.
             type (str, optional): The type of FMU to export. Currently only ``"model-exchange"`` is supported.
             os (str, optional): The operating system to export the FMU for. Currently only ``"win64"`` is supported.
             verbose (bool, optional): Display detailed information about the operation while running.
+
         Returns:
             None
+
         Examples:
             .. code-block:: python
+
                 emulator = tl.Emulator(id="emulator_name")
                 emulator.train(dataset, inputs=["x1","x2","x3","x4"], outputs=["der(x1)","der(x2)"], params)
                 emulator.fmu(file_path="emulator.fmu", states={"x1":"der(x1)", "x2":"der(x2)"})

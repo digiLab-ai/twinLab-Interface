@@ -6,6 +6,7 @@ import warnings
 from typing import Optional
 from datetime import datetime, timedelta
 from pprint import pprint
+from typing import Any
 
 import pandas as pd
 import requests
@@ -307,7 +308,7 @@ def process_result_response(response: dict) -> dict:
 
 
 @typechecked
-def download_result_from_presigned_url(url: str) -> io.StringIO:
+def download_result_from_presigned_url(url: str) -> Any:
     # Download a `pandas.DataFrame` from the specified pre-signed URL.
     response = requests.get(url)
     result = response.json()
