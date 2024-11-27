@@ -192,13 +192,13 @@ class ModelSelectionParams(Params):
     def __init__(
         self,
         seed: Optional[int] = None,
-        evaluation_metric: str = "MSLL",  # TODO: Consider depricating this in v3
-        val_ratio: float = 0.2,  # TODO: Consider depricating this in v3
+        evaluation_metric: str = "MSLL",  # NOTE: This simply does nothing
+        val_ratio: float = 0.2,  # NOTE: This simply does nothing
         base_kernels: Union[
             str, Set[str]
-        ] = "restricted",  # TODO: Consider depricating this in v3
-        depth: int = 1,  # TODO: Consider depricating this in v3
-        beam: int = 2,  # TODO: Consider depricating this in v3
+        ] = "restricted",  # TODO: Consider deprecating this in v3
+        depth: int = 1,  # TODO: Consider deprecating this in v3
+        beam: int = 2,  # TODO: Consider deprecating this in v3
     ):
         self.seed = seed
         self.evaluation_metric = evaluation_metric
@@ -209,12 +209,12 @@ class ModelSelectionParams(Params):
 
         if evaluation_metric != "MSLL":
             warnings.warn(
-                "The `evaluation_metric` parameter is deprecated and will be removed in a future release. Please use the `ScoreParams` class instead.",
+                "The `evaluation_metric` parameter is deprecated and has no effect. It will be removed in a future release.",
                 DeprecationWarning,
             )
         if val_ratio != 0.2:
             warnings.warn(
-                "The `val_ratio` parameter is deprecated and will be removed in a future release. Please use the `ScoreParams` class instead.",
+                "The `val_ratio` parameter is deprecated and has no effect. It will be removed in a future release.",
                 DeprecationWarning,
             )
 
