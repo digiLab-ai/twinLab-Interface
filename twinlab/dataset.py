@@ -15,7 +15,6 @@ from . import _api, _utils, settings
 
 # Parameters
 DEBUG = False  # For developer debugging purposes
-USE_UPLOAD_URL = True  # Needs to be set to True to allow for large dataset uploads
 DEPRECATION_VERSION = "2.5.0"
 DEPRECATION_MESSAGE = (
     "This method is being deprecated. Please use `Dataset.analyse_variance()` to analyse either input or output variance.",
@@ -59,7 +58,10 @@ class Dataset:
         project_owner: str = None,
     ):
         self.id = id
-        self.project_id = _utils.match_project(project, project_owner)
+        self.project_id = _utils.get_project_id(
+            project,
+            _utils.retrieve_owner(project_owner),
+        )
 
     def __str__(self):
         return f"Dataset ID: {self.id}"
@@ -92,29 +94,19 @@ class Dataset:
                 dataset.upload(df)
 
         """
-        # Upload the file (either via link or directly)
-        if USE_UPLOAD_URL:
-            _, response = _api.get_dataset_upload_url(self.project_id, self.id)
-            upload_url = _utils.get_value_from_body("url", response)
-            _utils.upload_dataframe_to_presigned_url(
-                df,
-                upload_url,
-                verbose=verbose,
-                check=settings.CHECK_DATASETS,
-            )
-            response = _api.post_dataset_record(self.project_id, self.id)
-        else:
-            csv_string = _utils.get_csv_string(df)
-            _, response = _api.post_dataset(self.project_id, self.id, csv_string)
-            if verbose:
-                detail = _utils.get_value_from_body("detail", response)
-                print(detail)
 
-        # Create the dataset summary
-        _, response = _api.post_dataset_summary(self.project_id, self.id)
+        _, response = _api.get_dataset_upload_url(self.project_id, self.id)
+        upload_url = _utils.get_value_from_body("url", response)
+        _utils.upload_dataframe_to_presigned_url(
+            df,
+            upload_url,
+            verbose=verbose,
+            check=settings.CHECK_DATASETS,
+        )
+        response = _api.post_dataset_record(self.project_id, self.id)
+
         if verbose:
-            detail = _utils.get_value_from_body("detail", response)
-            print(detail)
+            print("Dataset successfully uploaded.")
 
     @typechecked
     def append(
@@ -149,12 +141,6 @@ class Dataset:
             self.id,
             dataset_id,
         )
-        if verbose:
-            detail = _utils.get_value_from_body("detail", response)
-            print(detail)
-
-        # Update the dataset summary
-        _, response = _api.post_dataset_summary(self.project_id, self.id)
         if verbose:
             detail = _utils.get_value_from_body("detail", response)
             print(detail)
@@ -327,11 +313,25 @@ class Dataset:
                 max     0.980764   0.921553
 
         """
-        _, response = _api.get_dataset_summary(self.project_id, self.id)
 
-        csv_string = _utils.get_value_from_body("summary", response)
-        csv_string = io.StringIO(csv_string)
-        df = pd.read_csv(csv_string, index_col=0, sep=",")
+        _, response = _api.post_dataset_summary(self.project_id, self.id)
+
+        process_id = _utils.get_value_from_body("process_id", response)
+
+        response = _utils.wait_for_job_completion(
+            _api.get_dataset_process,
+            self.project_id,
+            self.id,
+            process_id,
+            verbose=verbose,
+        )
+
+        response = _utils.process_result_response(response)
+
+        result = _utils.get_value_from_body("dataset_summary", response)
+
+        df = pd.read_csv(io.StringIO(result), index_col=0, sep=",")
+
         if verbose:
             print("Dataset summary:")
             print(df)

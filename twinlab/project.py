@@ -1,3 +1,5 @@
+import os
+from pprint import pprint
 from typing import List
 
 from typeguard import typechecked
@@ -34,7 +36,7 @@ def list_projects(verbose: bool = False) -> List[str]:
     projects = [project["name"] for project in projects]
     if verbose:
         print("Projects:")
-        print(projects, compact=True, sort_dicts=False)
+        pprint(projects, compact=True, sort_dicts=False)
     return projects
 
 
@@ -52,7 +54,7 @@ def create_project(project_id: str, verbose: bool = False) -> None:
         None
 
     """
-    _, response = _api.post_project(project_id)
+    _api.post_project(project_id)
     if verbose:
         print(f"Project {project_id} created.")
     return None
@@ -72,11 +74,14 @@ def delete_project(project_id: str, verbose: bool = False) -> None:
 
     """
 
-    project_id = _utils.match_project(project_id, project_owner_email=None)
-    _, response = _api.delete_project(project_id)
+    # Get the mongoDB id of the project
+    # As only the owner can delete the project assume the current user is the owner. If they're not the owner the project will not be found
+    project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
+
+    # Make the delete request
+    _api.delete_project(project_id)
     if verbose:
         print(f"Project {project_id} deleted.")
-
     return None
 
 
@@ -96,11 +101,15 @@ def share_project(project_id: str, user: str, role: str, verbose: bool = False) 
 
     """
 
+    # Get the account object for the user that the project will be shared with
     _, user_account = _api.get_account(user)
-    project_id = _utils.match_project(project_id, None)
-    _, response = _api.post_project_members_account(
-        project_id, user_account["_id"], role
-    )
+
+    # Get the mongoDB id of the project
+    # As only the owner can delete the project assume the current user is the owner. If they're not the owner the project will not be found
+    project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
+
+    # Make the share request
+    _api.post_project_members_account(project_id, user_account["_id"], role)
     if verbose:
         print(f"Project {project_id} shared with user {user}")
     return None
@@ -121,10 +130,15 @@ def unshare_project(project_id: str, user: str, verbose: bool = False) -> None:
 
     """
 
+    # Get the account object for the user that will be removed from the project
     _, user_account = _api.get_account(user)
-    project_id = _utils.match_project(project_id)
-    _, response = _api.delete_project_members_account(project_id, user_account["_id"])
+
+    # Get the mongoDB id of the project
+    # As only the owner can delete the project assume the current user is the owner. If they're not the owner the project will not be found
+    project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
+
+    # Make the unshare request
+    _api.delete_project_members_account(project_id, user_account["_id"])
     if verbose:
         print(f"User {user} removed from project {project_id}")
-
     return None

@@ -1,20 +1,19 @@
 import io
-import os
 import json
+import os
 import time
 import warnings
-from typing import Optional
 from datetime import datetime, timedelta
 from pprint import pprint
-from typing import Any
+from typing import Any, Dict, Optional, TypedDict, Union
 
 import pandas as pd
 import requests
 from typeguard import typechecked
 
+from ._api import get_account, get_projects
 from ._version import __version__
 from .settings import ValidStatus
-from ._api import get_account, get_projects
 
 ALLOWED_DATAFRAME_SIZE = 5.5 * int(1e6)
 
@@ -48,20 +47,6 @@ def get_project_id(project_name: str, project_owner_email: str):
         raise ValueError("No project found with the given name and owner.")
     else:
         project_id = str(matching_project["_id"])
-
-    return project_id
-
-
-@typechecked
-def match_project(project_name: str, project_owner_email: Optional[str] = None) -> str:
-    if project_name == "personal" and project_owner_email is None:
-        project_id = "personal"
-    else:
-
-        if not project_owner_email:
-            project_owner_email = os.getenv("TWINLAB_USER")
-
-        project_id = get_project_id(project_name, project_owner_email)
 
     return project_id
 
@@ -493,11 +478,31 @@ class EmulatorResultsAdapter:
         download_file_from_url(self.result_url, file_path)
 
 
-@typechecked
-def reformat_summary_dict(summary_dict: dict, detailed: bool = False) -> dict:
-    # Function to reformat the summary dictionary.
-    properties, mean, kernel, likelihood = {}, {}, {}, {}
+class SummaryDict(TypedDict, total=False):
+    properties: Dict[str, Any]
+    mean: Dict[str, Any]
+    kernel: Dict[str, Any]
+    likelihood: Dict[str, Any]
+    scores: Optional[Dict[str, Optional[Dict[str, float]]]]
 
+
+@typechecked
+def reformat_summary_dict(
+    summary_dict: dict, detailed: bool = False
+) -> Union[
+    SummaryDict, dict
+]:  # TODO: This function should consistently return a SummaryDict
+
+    # Function to reformat the summary dictionary.
+    # TODO: This function is absolutely vile! It needs to be refactored!
+    # TODO: It should return a SummaryDict, but it doesn't always do that!
+    # TODO: It can't because sometimes the format of the summary_dict isn't accounted for (for some models)!
+
+    # Deal with scores
+    scores = summary_dict.get("scores")
+
+    # First, extract the "base_estimator_diagnostics" key from the summary dictionary
+    # This is needed in several places below
     # To retrieve the dictionary from the "base_estimator_diagnostics" key, when input or output decomposition is applied
     if "base_estimator_diagnostics" in summary_dict["estimator_diagnostics"].keys():
         estimator_diagnostics = summary_dict["estimator_diagnostics"].get(
@@ -507,6 +512,7 @@ def reformat_summary_dict(summary_dict: dict, detailed: bool = False) -> dict:
         estimator_diagnostics = summary_dict.get("estimator_diagnostics")
 
     # Non-detailed case when only the learned hyperparameters are returned along with the covar_module and mean_module
+    mean, kernel, properties = {}, {}, {}
     if "learned_hyperparameters" in estimator_diagnostics.keys():
         learned_params = estimator_diagnostics.get("learned_hyperparameters")
 
@@ -536,10 +542,13 @@ def reformat_summary_dict(summary_dict: dict, detailed: bool = False) -> dict:
             "\n", ""
         )
     else:
+        # Something went wrong!
+        # In this case the format of the summary_dict is not as expected!
+        # We return the summary_dict as is because it still might be useful, even though it will be a mess.
+        warnings.warn("Unexpected format of the model summary dictionary encountered.")
         return summary_dict
-    if not detailed:
-        return {"properties": properties, "mean": mean, "kernel": kernel}
-    else:
+
+    if detailed:
         transform_list = ["input_transform_parameters", "outcome_transform_parameters"]
         join_delimiter = "_"
 
@@ -569,7 +578,7 @@ def reformat_summary_dict(summary_dict: dict, detailed: bool = False) -> dict:
                 "mean_module.raw_constant"
             )
 
-        # Extracting kernel parameters
+        # Extracting more kernel parameters in the detailed case
         if "covar_module_parameters" in estimator_diagnostics.keys():
             covar_module_params = estimator_diagnostics["covar_module_parameters"]
             for key in covar_module_params.keys():
@@ -586,6 +595,7 @@ def reformat_summary_dict(summary_dict: dict, detailed: bool = False) -> dict:
                 kernel[param_name] = covar_module_params.get(key)
 
         # Extracting likelihood parameters
+        likelihood = {}
         if "likelihood_parameters" in estimator_diagnostics.keys():
             likelihood_params = estimator_diagnostics["likelihood_parameters"]
             for key in likelihood_params.keys():
@@ -601,9 +611,35 @@ def reformat_summary_dict(summary_dict: dict, detailed: bool = False) -> dict:
                     likelihood["noise_model" + param_name] = likelihood_params.get(key)
                 else:
                     likelihood["noise_model_" + param_name] = likelihood_params.get(key)
-        return {
+
+        # Create the summary to return
+        summary = {
             "properties": properties,
             "mean": mean,
             "kernel": kernel,
-            "likelihood": likelihood,
+            "scores": scores,
         }
+        if detailed:  # Only want the likelihood if detailed is True
+            summary["likelihood"] = likelihood
+        return summary
+
+
+@typechecked
+def retrieve_owner(project_owner_email: Union[str, None]) -> str:
+    """
+    If the project owner is not provided, retrieve the owner from the environment variable.
+
+    Args:
+        project_owner_email (str, None): The email of the project owner.
+
+    Returns:
+        str: The email of the project owner.
+    """
+    if project_owner_email is None:
+        project_owner_email = os.getenv("TWINLAB_USER")
+        if not project_owner_email:
+            # Raise the same error as in the create_headers function.
+            raise ValueError(
+                "TWINLAB_USER environment variable not set. Please set this in a .env file or use tl.set_user()."
+            )
+    return project_owner_email

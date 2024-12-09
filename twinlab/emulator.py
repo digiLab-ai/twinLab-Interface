@@ -5,6 +5,7 @@ import time
 import uuid
 from pprint import pprint
 from typing import Callable, Dict, List, Optional, Tuple, Union
+import os
 
 # Third-party imports
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ from ._utils import (
     EmulatorResultsAdapter,
     convert_time_formats_in_status,
     download_file_from_url,
-    match_project,
+    get_project_id,
 )
 from .dataset import Dataset
 from .params import (
@@ -131,7 +132,10 @@ class Emulator:
         self, id: str, project: str = "personal", project_owner: Optional[str] = None
     ):
         self.id = id
-        self.project_id = match_project(project, project_owner)
+        self.project_id = get_project_id(
+            project,
+            _utils.retrieve_owner(project_owner),
+        )
 
     # TODO: DO designs
     @typechecked

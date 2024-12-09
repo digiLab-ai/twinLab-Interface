@@ -6,7 +6,7 @@ import pandas as pd
 from typeguard import typechecked
 
 from . import _api, _utils
-from ._utils import get_value_from_body, convert_time_formats_in_status, match_project
+from ._utils import get_value_from_body, convert_time_formats_in_status, get_project_id
 from .settings import ValidStatus
 
 
@@ -248,7 +248,10 @@ def list_datasets(
 
     """
 
-    project_id = match_project(project_name, project_owner)
+    project_id = get_project_id(
+        project_name,
+        _utils.retrieve_owner(project_owner),
+    )
 
     _, response = _api.get_datasets(project_id)
     datasets = get_value_from_body("datasets", response)
@@ -289,7 +292,10 @@ def list_emulators(
 
     """
 
-    project_id = match_project(project_name, project_owner)
+    project_id = get_project_id(
+        project_name,
+        _utils.retrieve_owner(project_owner),
+    )
 
     _, response = _api.get_emulators(project_id)
     emulators = _utils.get_value_from_body("emulators", response)
@@ -351,7 +357,10 @@ def list_emulators_statuses(
 
     """
 
-    project_id = match_project(project_name, project_owner)
+    project_id = get_project_id(
+        project_name,
+        _utils.retrieve_owner(project_owner),
+    )
 
     _, response = _api.get_emulators_statuses(project_id)
     emulator_statuses = _utils.get_value_from_body("emulators_statuses", response)
