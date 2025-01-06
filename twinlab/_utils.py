@@ -622,6 +622,8 @@ def reformat_summary_dict(
         if detailed:  # Only want the likelihood if detailed is True
             summary["likelihood"] = likelihood
         return summary
+    else:
+        return {"properties": properties, "mean": mean, "kernel": kernel}
 
 
 @typechecked

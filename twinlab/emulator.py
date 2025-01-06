@@ -710,7 +710,8 @@ class Emulator:
         parameters of the emulator, set the ``detailed`` parameter to ``True``.
 
         Args:
-            verbose (bool, optional): Display information about the operation while running.
+            detailed (bool, optional): If ``False`` return a subset of the summary. Default is ``False``.
+            verbose (bool, optional): Print the summary in a nice format in addition to returning the summary.
 
         Example:
             .. code-block:: python

@@ -37,6 +37,7 @@ from .project import (
     list_projects,
     share_project,
     unshare_project,
+    list_project_members,
 )
 from .dataset import Dataset
 from .distributions import Distribution

@@ -243,6 +243,8 @@ class TrainParams(Params):
             Currently only "gaussian_process_regression" is supported, which is the default value.
         estimator_params (EstimatorParams, optional): The set of parameters for the emulator.
         input_retained_dimensions (Union[int, None], optional): The number of input dimensions to retain after applying dimensional reduction.
+            Dimensional reduction uses singular value decomposition (SVD) to reduce the number of dimensions, discarding the least important dimensions.
+            The importance of the dimensions is determined by the variance of the training data.
             Setting this cannot be done at the same time as specifying the ``input_explained_variance``.
             The maximum number of input dimensions currently allowed by twinLab is 20.
             The default value is ``None``, which means that dimensional reduction is not applied to the input unless ``input_explained_variance`` is specified.
@@ -251,6 +253,8 @@ class TrainParams(Params):
             This cannot be specified at the same time as ``input_retained_dimensions``.
             The default value is ``None``, which means that dimensional reduction is not applied to the input unless ``input_retained_dimensions`` is specified.
         output_retained_dimensions (Union[int, None], optional): The number of output dimensions to retain after applying dimensional reduction.
+            Dimensional reduction uses singular value decomposition (SVD) to reduce the number of dimensions, discarding the least important dimensions.
+            The importance of the dimensions is determined by the variance of the training data.
             Setting this cannot be done at the same time as specifying the ``output_explained_variance``.
             The maximum number of output dimensions currently allowed by twinLab is 10.
             The default value is ``None``, which means that dimensional reduction is not applied to the output unless ``output_explained_variance`` is specified.

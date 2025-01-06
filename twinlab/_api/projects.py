@@ -1,6 +1,6 @@
 import os
 import requests
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from typeguard import typechecked
 
@@ -64,6 +64,17 @@ def delete_project_members_account(project_id: str, account_id: str) -> Dict[str
     headers = create_headers()
     url = f"{os.getenv('TWINLAB_URL')}/projects/{project_id}/members/{account_id}"
     response = requests.delete(url, headers=headers)
+    status = response.status_code
+    body = response.json()
+    return status, body
+
+
+@typechecked
+@check_status_code
+def get_project_members(project_id: str) -> Dict[str, List[str]]:
+    headers = create_headers()
+    url = f"{os.getenv('TWINLAB_URL')}/projects/{project_id}/members"
+    response = requests.get(url, headers=headers)
     status = response.status_code
     body = response.json()
     return status, body

@@ -1,6 +1,5 @@
-import os
 from pprint import pprint
-from typing import List
+from typing import List, Dict
 
 from typeguard import typechecked
 
@@ -74,12 +73,13 @@ def delete_project(project_id: str, verbose: bool = False) -> None:
 
     """
 
-    # Get the mongoDB id of the project
-    # As only the owner can delete the project assume the current user is the owner. If they're not the owner the project will not be found
-    project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
+    # Get the MongoDB id of the project
+    # As only the owner can delete the project assume the current user is the owner.
+    # If they're not the owner the project will not be found
+    _project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
 
     # Make the delete request
-    _api.delete_project(project_id)
+    _api.delete_project(_project_id)
     if verbose:
         print(f"Project {project_id} deleted.")
     return None
@@ -104,12 +104,13 @@ def share_project(project_id: str, user: str, role: str, verbose: bool = False) 
     # Get the account object for the user that the project will be shared with
     _, user_account = _api.get_account(user)
 
-    # Get the mongoDB id of the project
-    # As only the owner can delete the project assume the current user is the owner. If they're not the owner the project will not be found
-    project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
+    # Get the MongoDB id of the project
+    # As only the owner can delete the project assume the current user is the owner.
+    # If they're not the owner the project will not be found
+    _project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
 
     # Make the share request
-    _api.post_project_members_account(project_id, user_account["_id"], role)
+    _api.post_project_members_account(_project_id, user_account["_id"], role)
     if verbose:
         print(f"Project {project_id} shared with user {user}")
     return None
@@ -133,12 +134,50 @@ def unshare_project(project_id: str, user: str, verbose: bool = False) -> None:
     # Get the account object for the user that will be removed from the project
     _, user_account = _api.get_account(user)
 
-    # Get the mongoDB id of the project
-    # As only the owner can delete the project assume the current user is the owner. If they're not the owner the project will not be found
-    project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
+    # Get the MongoDB id of the project
+    # As only the owner can delete the project assume the current user is the owner.
+    # If they're not the owner the project will not be found
+    _project_id = _utils.get_project_id(project_id, _utils.retrieve_owner(None))
 
     # Make the unshare request
-    _api.delete_project_members_account(project_id, user_account["_id"])
+    _api.delete_project_members_account(_project_id, user_account["_id"])
     if verbose:
         print(f"User {user} removed from project {project_id}")
     return None
+
+
+@typechecked
+def list_project_members(
+    project_id: str, project_owner_email: str
+) -> Dict[str, List[str]]:
+    """List members of a project with their project roles.
+
+    Args:
+        project_id (str): The name of the project in the twinLab cloud.
+        project_owner_email (str): The email of the project owner.
+
+    Returns:
+        Dict[str, list[str]]: Members of the project grouped by their role.
+
+    Example:
+        .. code-block:: python
+
+            tl.list_project_members("project1", "user1@mail.com")
+
+        .. code-block:: console
+
+            {
+                "owner": ["user1@mail.com"],
+                "admin": ["user2@mail.com"],
+                "member": ["user3@mail.com, "user4@mail.com"]
+            }
+
+    """
+
+    # Get the mongoDB id for the project
+    project_id_mdb = _utils.get_project_id(project_id, project_owner_email)
+
+    # Get the members of the project
+    _, response = _api.get_project_members(project_id_mdb)
+
+    return response
