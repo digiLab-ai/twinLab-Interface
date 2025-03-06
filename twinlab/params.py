@@ -1,6 +1,6 @@
 import warnings
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Literal, Optional, Union
 
 import pandas as pd
 from deprecated import deprecated
@@ -195,7 +195,7 @@ class ModelSelectionParams(Params):
         evaluation_metric: str = "MSLL",  # NOTE: This simply does nothing
         val_ratio: float = 0.2,  # NOTE: This simply does nothing
         base_kernels: Union[
-            str, Set[str]
+            str, set[str]
         ] = "restricted",  # TODO: Consider deprecating this in v3
         depth: int = 1,  # TODO: Consider deprecating this in v3
         beam: int = 2,  # TODO: Consider deprecating this in v3
@@ -284,7 +284,22 @@ class TrainParams(Params):
             Setting to an integer is necessary for reproducible results.
             The default value is ``42``, which is useful for reproducibility, but it can be set to ``None`` to randomly generate the seed each time.
             Be aware that the seed is used in the training process, so if the seed is set to ``None`` the trained emulator will not be reproducible.
-
+        warp_inputs: (bool, optional): Whether to warp the input data before training the emulator.
+            The parameters of the warping function are learned during training.
+            These parameters are adjusted in an attempt to make the input data as suitable as possible for the emulator.
+            The default value is ``False``.
+        inducing_points (Union[int, None], optional): The number of inducing points to use during training.
+            This only matters if estimator_type in EstimatorParams is set to ``"variational_gp"``.
+            It should be lower than the number of training data points.
+            The default value is None, which defaults to using 1/4 of the training points as inducing points.
+        batch_size (Union[int, None], optional): The number of samples to use in each batch during training.
+            This only matters if estimator_type in EstimatorParams is set to ``"variational_gp"``.
+            It should be lower than the number of training data points.
+            The default value is None, which defaults to using 1/6 of the inducing points for each batch.
+        training_objective (str, optional): The objective function to use during training.
+            This only applies if estimator_type in EstimatorParams is set to ``"variational_gp"``.
+            The default value is ``"ELBO"``, which is the Evidence Lower Bound.
+            The other option is ``"PRED_LL"``, which is the predictive log likelihood.
     """
 
     def __init__(
@@ -303,6 +318,10 @@ class TrainParams(Params):
         model_selection_params: ModelSelectionParams = ModelSelectionParams(),
         shuffle: bool = True,
         seed: Optional[int] = 42,  # TODO: Change to None in v3?
+        warp_inputs: bool = False,  # TODO: Move this up in v3!
+        inducing_points: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        training_objective: Literal["ELBO", "PRED_LL"] = "ELBO",
     ):
         # Parameters that will be passed to the emulator on construction
         self.fidelity = fidelity
@@ -313,6 +332,10 @@ class TrainParams(Params):
         self.input_retained_dimensions = input_retained_dimensions
         self.output_explained_variance = output_explained_variance
         self.output_retained_dimensions = output_retained_dimensions
+        self.warp_inputs = warp_inputs
+        self.inducing_points = inducing_points
+        self.batch_size = batch_size
+        self.training_objective = training_objective
 
         # Parameters that will be passed to the emulator.fit() method
         self.dataset_std = dataset_std
@@ -356,7 +379,10 @@ class TrainParams(Params):
             "input_retained_dimensions": self.input_retained_dimensions,
             "output_explained_variance": self.output_explained_variance,
             "output_retained_dimensions": self.output_retained_dimensions,
-            "class_column": self.class_column,
+            "warp_inputs": self.warp_inputs,
+            "inducing_points": self.inducing_points,
+            "batch_size": self.batch_size,
+            "training_objective": self.training_objective,
         }
         emulator_params = remove_none_values(emulator_params)
         training_params = {  # Pass to campaign.fit() in the library
@@ -600,11 +626,11 @@ class RecommendParams(Params):
 
     def __init__(
         self,
-        weights: Optional[List[float]] = None,
+        weights: Optional[list[float]] = None,
         # mc_points: Optional[int] = None, # TODO: Cannot be included because tensor
         num_restarts: int = 5,
         raw_samples: int = 128,
-        bounds: Optional[Dict[str, Tuple[float, float]]] = None,
+        bounds: Optional[dict[str, tuple[float, float]]] = None,
         seed: Optional[int] = None,
     ):
         self.weights = weights
@@ -758,7 +784,7 @@ class MaximizeParams(Params):
 
     def __init__(
         self,
-        opt_weights: Optional[List[float]] = None,
+        opt_weights: Optional[list[float]] = None,
     ):
         self.opt_weights = opt_weights
 

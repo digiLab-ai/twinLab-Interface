@@ -1,5 +1,6 @@
 # Standard imports
 import os
+import warnings
 from enum import Enum
 
 # Third-party imports
@@ -7,7 +8,6 @@ import dotenv
 
 # Project imports
 from ._version import __version__
-import warnings
 
 
 # Possible states of a twinLab job
@@ -73,7 +73,7 @@ dotenv_path = dotenv.find_dotenv(usecwd=True)
 # Try to load the .env file.
 try:
     dotenv.load_dotenv(dotenv_path)
-except UnicodeDecodeError as e:
+except UnicodeDecodeError:
     warnings.warn("Failed to load environment variables from .env file.")
     print(".env location:", dotenv_path)
 
@@ -83,7 +83,7 @@ if not os.getenv("TWINLAB_URL"):
 
 # Intro message
 print()
-print(f"          ====== TwinLab Client Initialisation ======")
+print("          ====== TwinLab Client Initialisation ======")
 print(f"          Version     : {__version__}")
 if os.getenv("TWINLAB_USER"):
     print(f"          User        : {os.getenv('TWINLAB_USER')}")

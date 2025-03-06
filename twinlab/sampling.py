@@ -25,7 +25,7 @@ class LatinHypercube(Sampling):
     Args:
         scramble (bool, optional): Whether to scramble the samples within sub-cubes.
             The default value is ``True``.
-        optimization (str | None, optional): The optimization method to use for generating the samples.
+        optimization (Union[str, None], optional): The optimization method to use for generating the samples.
             Options are:
 
             - ``None``: No optimization is performed once the intial samples are generated.

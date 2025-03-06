@@ -5,14 +5,13 @@ import time
 import warnings
 from datetime import datetime, timedelta
 from pprint import pprint
-from typing import Any, Dict, Optional, TypedDict, Union
+from typing import Any, Optional, TypedDict, Union
 
 import pandas as pd
 import requests
 from typeguard import typechecked
 
 from ._api import get_account, get_projects
-from ._version import __version__
 from .settings import ValidStatus
 
 ALLOWED_DATAFRAME_SIZE = 5.5 * int(1e6)
@@ -32,16 +31,13 @@ def get_project_id(project_name: str, project_owner_email: str):
     _, available_projects = get_projects()
     available_projects = available_projects["projects"]
 
-    # List comprehension to find the matching dictionary
-    matching_project = next(
-        (
-            proj  # Use a different variable name here
-            for proj in available_projects
-            if proj["name"] == project_name
-            and proj["owner_id"] == project_owner_account["_id"]
-        ),
-        None,  # Default value if no match is found
-    )
+    # Find the matching project
+    matching_project = None
+    for project in available_projects:
+        project_id = project_owner_account["_id"]
+        if (project["name"] == project_name) and (project["owner_id"] == project_id):
+            matching_project = project
+            break
 
     if not matching_project:
         raise ValueError("No project found with the given name and owner.")
@@ -103,7 +99,7 @@ def get_message(response: dict) -> str:
     # TODO: This should be better
     try:
         message = response["message"]
-    except:
+    except KeyError:
         message = response
     return message
 
@@ -233,9 +229,9 @@ def upload_dataframe_to_presigned_url(
     response = requests.put(url, data=upload_file, headers=headers)
     if verbose:
         if response.status_code == 200:
-            print(f"Dataframe is uploading.")
+            print("Dataframe is uploading.")
         else:
-            print(f"Dataframe upload failed")
+            print("Dataframe upload failed")
             print(f"Status code: {response.status_code}")
             print(f"Reason: {response.text}")
 
@@ -259,7 +255,7 @@ def upload_file_to_presigned_url(
         if response.status_code == 200:
             print(f"File {file_path} is uploading.")
         else:
-            print(f"File upload failed")
+            print("File upload failed")
             print(f"Status code: {response.status_code}")
             print(f"Reason: {response.text}")
 
@@ -479,11 +475,11 @@ class EmulatorResultsAdapter:
 
 
 class SummaryDict(TypedDict, total=False):
-    properties: Dict[str, Any]
-    mean: Dict[str, Any]
-    kernel: Dict[str, Any]
-    likelihood: Dict[str, Any]
-    scores: Optional[Dict[str, Optional[Dict[str, float]]]]
+    properties: dict[str, Any]
+    mean: dict[str, Any]
+    kernel: dict[str, Any]
+    likelihood: dict[str, Any]
+    scores: Optional[dict[str, Optional[dict[str, float]]]]
 
 
 @typechecked
@@ -553,9 +549,8 @@ def reformat_summary_dict(
         join_delimiter = "_"
 
         # Extracting transform parameters
-        if (
-            transform_list[0] in estimator_diagnostics.keys()
-            and transform_list[1] in estimator_diagnostics.keys()
+        if (transform_list[0] in estimator_diagnostics.keys()) and (
+            transform_list[1] in estimator_diagnostics.keys()
         ):
             for transform_parameters in transform_list:
                 for key in estimator_diagnostics[transform_parameters].keys():
@@ -627,7 +622,7 @@ def reformat_summary_dict(
 
 
 @typechecked
-def retrieve_owner(project_owner_email: Union[str, None]) -> str:
+def retrieve_owner(project_owner_email: Optional[str]) -> str:
     """
     If the project owner is not provided, retrieve the owner from the environment variable.
 

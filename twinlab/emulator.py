@@ -4,8 +4,7 @@ import sys
 import time
 import uuid
 from pprint import pprint
-from typing import Callable, Dict, List, Optional, Tuple, Union
-import os
+from typing import Callable, Literal, Optional, Union
 
 # Third-party imports
 import matplotlib.pyplot as plt
@@ -64,7 +63,7 @@ PROCESS_MAP = {
 NOT_WAIT_TIME = 5  # Seconds; check a job has dispatched okay
 ALLOWED_DATAFRAME_SIZE = 5.5 * int(1e6)  # Safely withing 6MB AWS limit
 
-### Helper functions ###
+# Helper functions
 
 
 def _dataset_over_memory_limit(dataset_csv: str) -> pd.DataFrame:
@@ -104,7 +103,7 @@ def _process_request_dataframes(
     return params
 
 
-### ###
+# Main class
 
 
 class Emulator:
@@ -141,7 +140,7 @@ class Emulator:
     @typechecked
     def design(
         self,
-        priors: List[Prior],
+        priors: list[Prior],
         num_points: int,
         params: DesignParams = DesignParams(),
         verbose: bool = False,
@@ -206,11 +205,12 @@ class Emulator:
     def train(
         self,
         dataset: Dataset,
-        inputs: List[str],
-        outputs: List[str],
+        inputs: list[str],
+        outputs: list[str],
         params: Union[TrainParams, TrainParamsBeta] = TrainParams(),
         wait: bool = True,
         verbose: bool = True,
+        processor: Literal["cpu", "gpu"] = "cpu",
     ):
         """Train an emulator on the twinLab cloud.
 
@@ -247,6 +247,11 @@ class Emulator:
                 Setting ``wait=False`` is useful for running longer training jobs.
                 The status of all emulators, including those currently training, can be queried using ``tl.list_emulators(verbose=True)``.
             verbose (bool, optional): Display information about the operation while running.
+            processor (str, optional): The type of hardware processor to use for training the emulator.
+                The options are either "cpu" or "gpu".
+                The "gpu" is faster for training models on larger datasets, or variational models.
+                However, "gpu" can be slower particularly for smaller datasets.
+                Default is "cpu".
 
         Returns:
             If ``wait=True`` the function will run until the emulator is trained on the cloud.
@@ -306,10 +311,6 @@ class Emulator:
         """
 
         # Making a dictionary from TrainParams class
-        if PROCESSOR == "gpu":
-            print(
-                "Emulator is being trained on GPU. Inference operations must also be performed on GPU"
-            )
         emulator_params, training_params = params.unpack_parameters()
         emulator_params["inputs"] = inputs
         emulator_params["outputs"] = outputs
@@ -321,7 +322,7 @@ class Emulator:
             self.id,
             emulator_params,
             training_params,
-            processor=PROCESSOR,
+            processor=processor,
         )
         if verbose:
             detail = _utils.get_value_from_body("detail", request_response)
@@ -514,7 +515,7 @@ class Emulator:
             pprint(df_test)
         return df_test
 
-    def list_processes(self, verbose: bool = False) -> List[str]:
+    def list_processes(self, verbose: bool = False) -> list[str]:
         """List all of the processes associated with a given emulator on the twinLab cloud.
 
         Args:
@@ -543,7 +544,7 @@ class Emulator:
 
         return processes
 
-    def list_processes_statuses(self, verbose: bool = False) -> List[str]:
+    def list_processes_statuses(self, verbose: bool = False) -> list[str]:
         """List the status of all processes associated with a given emulator on the twinLab cloud.
 
         This includes the current status of the process, the start time, the end time, and the process ID.
@@ -626,8 +627,8 @@ class Emulator:
         None,  # score; benchmark with no test data
         float,  # score (with combined_score=True)
         pd.DataFrame,  # score; benchmark; sample; calibrate; maximize
-        Tuple[pd.DataFrame, pd.DataFrame],  # predict
-        Tuple[pd.DataFrame, float],  # recommend
+        tuple[pd.DataFrame, pd.DataFrame],  # predict
+        tuple[pd.DataFrame, float],  # recommend
         str,  # message for failed/running process
     ]:
         """Get the results from a process associated with the emulator on the twinLab cloud.
@@ -789,7 +790,7 @@ class Emulator:
         df_std: Optional[pd.DataFrame] = None,
         wait: bool = True,
         verbose: bool = False,
-    ) -> Union[None, str]:
+    ) -> Optional[str]:
         """
         Update an emulator with new training data.
 
@@ -853,7 +854,7 @@ class Emulator:
         )
 
         if update:
-            print(f"Your emulator has been updated with new data.")
+            print("Your emulator has been updated with new data.")
 
     @typechecked
     def score(
@@ -1001,7 +1002,7 @@ class Emulator:
         params: PredictParams = PredictParams(),
         wait: bool = True,
         verbose: bool = True,
-    ) -> Union[Tuple[pd.DataFrame, pd.DataFrame], str]:
+    ) -> Union[tuple[pd.DataFrame, pd.DataFrame], str]:
         """Make predictions using a trained emulator that exists on the twinLab cloud.
 
         This method makes predictions from a trained emulator on new data.
@@ -1174,7 +1175,7 @@ class Emulator:
         params: RecommendParams = RecommendParams(),
         wait: bool = True,
         verbose: bool = True,
-    ) -> Union[Tuple[pd.DataFrame, float], str]:
+    ) -> Union[tuple[pd.DataFrame, float], str]:
         """Draw new recommended data points from a trained emulator that exists on the twinLab cloud.
 
         The recommend functionality of an emulator is used to suggest new data points to sample.
@@ -1448,8 +1449,8 @@ class Emulator:
     def learn(
         self,
         dataset: Dataset,
-        inputs: List[str],
-        outputs: List[str],
+        inputs: list[str],
+        outputs: list[str],
         num_loops: int,
         num_points_per_loop: int,
         acq_func: str,
@@ -1606,14 +1607,14 @@ class Emulator:
         self,
         x_axis: str,
         y_axis: str,
-        x_fixed: Dict[str, float] = {},
+        x_fixed: dict[str, float] = {},
         params: PredictParams = PredictParams(),
-        x_lim: Tuple[Optional[float], Optional[float]] = (None, None),
+        x_lim: tuple[Optional[float], Optional[float]] = (None, None),
         n_points: int = 100,
         label: Optional[str] = "Emulator",
         blur: bool = False,
         color: str = digilab_colors["light_blue"],
-        figsize: Tuple[float, float] = (6.4, 4.8),
+        figsize: tuple[float, float] = (6.4, 4.8),
         verbose: bool = False,
     ) -> plt.plot:
         """Plot the predictions from an emulator across a single dimension with one and two standard deviation bands.
@@ -1737,15 +1738,15 @@ class Emulator:
         x1_axis: str,
         x2_axis: str,
         y_axis: str,
-        x_fixed: Dict[str, float] = {},
+        x_fixed: dict[str, float] = {},
         mean_or_std: str = "mean",
         params: PredictParams = PredictParams(),
-        x1_lim: Tuple[Optional[float], Optional[float]] = (None, None),
-        x2_lim: Tuple[Optional[float], Optional[float]] = (None, None),
-        y_lim: Tuple[Optional[float], Optional[float]] = (None, None),
+        x1_lim: tuple[Optional[float], Optional[float]] = (None, None),
+        x2_lim: tuple[Optional[float], Optional[float]] = (None, None),
+        y_lim: tuple[Optional[float], Optional[float]] = (None, None),
         n_points: int = 25,
         cmap=digilab_cmap,  # NOTE: No typehint beacause the same as matplolib cmap (string & objects)?
-        figsize: Tuple[float, float] = (6.4, 4.8),
+        figsize: tuple[float, float] = (6.4, 4.8),
         verbose: bool = False,
     ) -> plt.plot:
         """Plot a heatmap of the predictions from an emulator across two dimensions.
@@ -2025,14 +2026,14 @@ class Emulator:
 
         # Assert the format is in the valid enum
         try:
-            fmu_type_enum = ValidFMUTypes(type)
+            ValidFMUTypes(type)
         except ValueError as e:
             raise ValueError(
                 f"`'{type}'` is not a supported FMU type. Currently twinLab support the following formats: {ValidFMUTypes.list()}"
             ) from e
 
         try:
-            os_enum = ValidFMUOS(os)
+            ValidFMUOS(os)
         except ValueError as e:
             raise ValueError(
                 f"`'{os}'` is not currently supported. Please choose from one of the following operation systems: {ValidFMUOS.list()}"

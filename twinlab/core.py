@@ -1,12 +1,12 @@
 import os
 from pprint import pprint
-from typing import Dict, List, Optional
+from typing import Optional
 
 import pandas as pd
 from typeguard import typechecked
 
 from . import _api, _utils
-from ._utils import get_value_from_body, convert_time_formats_in_status, get_project_id
+from ._utils import convert_time_formats_in_status, get_project_id, get_value_from_body
 from .settings import ValidStatus
 
 
@@ -158,7 +158,7 @@ def set_server_url(url: str, verbose: bool = False) -> None:
 
 
 @typechecked
-def user_information(verbose: bool = False) -> Dict:
+def user_information(verbose: bool = False) -> dict[str, str]:
     """Get information about the twinLab user.
 
     Args:
@@ -189,7 +189,7 @@ def user_information(verbose: bool = False) -> Dict:
 
 
 @typechecked
-def versions(verbose: bool = False) -> Dict[str, str]:
+def versions(verbose: bool = False) -> dict[str, str]:
     """Get information about the twinLab version being used.
 
     Args:
@@ -223,7 +223,7 @@ def list_datasets(
     project_name: str = "personal",
     project_owner: Optional[str] = None,
     verbose: bool = False,
-) -> List[str]:
+) -> list[str]:
     """List datasets that have been uploaded to a project in the user's twinLab cloud account.
     If no project is specified, the default project is the user's `"personal"` project.
 
@@ -266,7 +266,7 @@ def list_emulators(
     project_name: str = "personal",
     project_owner: Optional[str] = None,
     verbose: bool = False,
-) -> List[str]:
+) -> list[str]:
     """List trained emulators that exist in a project on the user's twinLab cloud account.
         If no project is specified, the default project is the user's `"personal"` project.
 
@@ -312,7 +312,7 @@ def list_emulators_statuses(
     project_name: str = "personal",
     project_owner: Optional[str] = None,
     verbose: bool = False,
-) -> List[dict]:
+) -> list[dict]:
     """List the statuses of training and trained emulators in a project, as well as those that have failed to train
     If no project is specified, the default project is the user's `"personal"` project.
 

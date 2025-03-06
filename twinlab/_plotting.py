@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Tuple
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,7 +27,7 @@ def plot(
     df_std: pd.DataFrame,
     label: Optional[str] = "Emulator",
     color: str = DIGILAB_COLORS["light_blue"],
-    figsize: Tuple[float, float] = (6.4, 4.8),
+    figsize: tuple[float, float] = (6.4, 4.8),
 ) -> plt:
 
     X = df_X[x_axis]
@@ -62,7 +62,7 @@ def blur(
     df_std: pd.DataFrame,
     label: Optional[str] = "Emulator",
     color: str = DIGILAB_COLORS["light_blue"],
-    figsize: Tuple[float, float] = (6.4, 4.8),
+    figsize: tuple[float, float] = (6.4, 4.8),
 ) -> plt:
 
     X = df_X[x_axis]
@@ -113,7 +113,7 @@ def heatmap(
     df_X: pd.DataFrame,
     df_mean: pd.DataFrame,
     cmap=DIGILAB_CMAP,
-    figsize: Tuple[float, float] = (6.4, 4.8),
+    figsize: tuple[float, float] = (6.4, 4.8),
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
 ) -> plt:

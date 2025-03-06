@@ -2,9 +2,6 @@ from typeguard import typechecked
 
 from ..params import TrainParams
 
-from typeguard import typechecked
-from ..params import TrainParams
-
 
 @typechecked
 class TrainParamsBeta(TrainParams):

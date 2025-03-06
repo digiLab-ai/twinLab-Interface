@@ -1,17 +1,16 @@
 import os
-from typing import List, Tuple
 
 import requests
 from typeguard import typechecked
 
 from ._utils import check_status_code, create_headers
 
-### Uploading via URL endpoints ###
+# Uploading via URL endpoints
 
 
 @typechecked
 @check_status_code
-def get_dataset_upload_url(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def get_dataset_upload_url(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/upload-url"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -25,7 +24,7 @@ def get_dataset_upload_url(project_id: str, dataset_id: str) -> Tuple[int, dict]
 @check_status_code
 def get_dataset_temporary_upload_url(
     project_id: str, dataset_id: str
-) -> Tuple[int, dict]:
+) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/temporary-upload-url"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -35,14 +34,12 @@ def get_dataset_temporary_upload_url(
     return status, body
 
 
-### ###
-
-### Dataset endpoints ###
+# Dataset endpoints
 
 
 @typechecked
 @check_status_code
-def get_datasets(project_id: str) -> Tuple[int, dict]:
+def get_datasets(project_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets"
     headers = create_headers()
     headers["X-project"] = project_id
@@ -54,7 +51,7 @@ def get_datasets(project_id: str) -> Tuple[int, dict]:
 
 @typechecked
 @check_status_code
-def post_dataset(project_id: str, dataset_id: str, data_csv: str) -> Tuple[int, dict]:
+def post_dataset(project_id: str, dataset_id: str, data_csv: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -67,7 +64,7 @@ def post_dataset(project_id: str, dataset_id: str, data_csv: str) -> Tuple[int, 
 
 @typechecked
 @check_status_code
-def get_dataset(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def get_dataset(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -79,7 +76,7 @@ def get_dataset(project_id: str, dataset_id: str) -> Tuple[int, dict]:
 
 @typechecked
 @check_status_code
-def patch_dataset_lock(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def patch_dataset_lock(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/lock"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -91,7 +88,7 @@ def patch_dataset_lock(project_id: str, dataset_id: str) -> Tuple[int, dict]:
 
 @typechecked
 @check_status_code
-def patch_dataset_unlock(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def patch_dataset_unlock(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/unlock"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -103,7 +100,7 @@ def patch_dataset_unlock(project_id: str, dataset_id: str) -> Tuple[int, dict]:
 
 @typechecked
 @check_status_code
-def post_dataset_record(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def post_dataset_record(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/record"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -117,7 +114,7 @@ def post_dataset_record(project_id: str, dataset_id: str) -> Tuple[int, dict]:
 @check_status_code
 def post_dataset_append(
     project_id: str, dataset_id: str, new_dataset_id: str
-) -> Tuple[int, dict]:
+) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/append"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -130,7 +127,7 @@ def post_dataset_append(
 
 @typechecked
 @check_status_code
-def post_dataset_summary(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def post_dataset_summary(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/summary"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -142,7 +139,7 @@ def post_dataset_summary(project_id: str, dataset_id: str) -> Tuple[int, dict]:
 
 @typechecked
 @check_status_code
-def get_dataset_summary(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def get_dataset_summary(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/summary"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -155,8 +152,8 @@ def get_dataset_summary(project_id: str, dataset_id: str) -> Tuple[int, dict]:
 @typechecked
 @check_status_code
 def post_dataset_analysis(
-    project_id: str, dataset_id: str, columns: List[str]
-) -> Tuple[int, dict]:
+    project_id: str, dataset_id: str, columns: list[str]
+) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/analysis"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -171,7 +168,7 @@ def post_dataset_analysis(
 @check_status_code
 def get_dataset_process(
     project_id: str, dataset_id: str, process_id: str
-) -> Tuple[int, dict]:
+) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}/processes/{process_id}"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -183,7 +180,7 @@ def get_dataset_process(
 
 @typechecked
 @check_status_code
-def delete_dataset(project_id: str, dataset_id: str) -> Tuple[int, dict]:
+def delete_dataset(project_id: str, dataset_id: str) -> tuple[int, dict]:
     url = f"{os.getenv('TWINLAB_URL')}/datasets/{dataset_id}"
     headers = create_headers()
     headers["X-Project"] = project_id
@@ -193,9 +190,7 @@ def delete_dataset(project_id: str, dataset_id: str) -> Tuple[int, dict]:
     return status, body
 
 
-### ###
-
-### Example dataset endpoints ###
+# Example dataset endpoints
 
 
 @typechecked
@@ -218,6 +213,3 @@ def get_example_dataset(dataset_id: str) -> dict:
     status = response.status_code
     body = response.json()
     return status, body
-
-
-### ###

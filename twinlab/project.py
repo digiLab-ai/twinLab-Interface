@@ -1,5 +1,4 @@
 from pprint import pprint
-from typing import List, Dict
 
 from typeguard import typechecked
 
@@ -7,7 +6,7 @@ from . import _api, _utils
 
 
 @typechecked
-def list_projects(verbose: bool = False) -> List[str]:
+def list_projects(verbose: bool = False) -> list[str]:
     """List projects that you own or are a part of.
 
     Projects can be used to group related datasets, emulators, and share them with other users.
@@ -149,7 +148,7 @@ def unshare_project(project_id: str, user: str, verbose: bool = False) -> None:
 @typechecked
 def list_project_members(
     project_id: str, project_owner_email: str
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """List members of a project with their project roles.
 
     Args:

@@ -1,16 +1,10 @@
-# Standard imports
 import io
-import os
 import uuid
-from typing import List
 
 import pandas as pd
-
-# Third-party imports
 from deprecated import deprecated
 from typeguard import typechecked
 
-# Project imports
 from . import _api, _utils, settings
 
 # Parameters
@@ -148,7 +142,7 @@ class Dataset:
     @typechecked
     def analyse_variance(
         self,
-        columns: List[str],
+        columns: list[str],
         verbose: bool = False,
     ) -> pd.DataFrame:
         """Return an analysis of the variance retained per dimension after performing singular value decomposition (SVD) on the dataset.
@@ -214,7 +208,7 @@ class Dataset:
     @typechecked
     def analyse_input_variance(
         self,
-        columns: List[str],
+        columns: list[str],
         verbose: bool = False,
     ) -> pd.DataFrame:
         """
@@ -233,7 +227,7 @@ class Dataset:
     @typechecked
     def analyse_output_variance(
         self,
-        columns: List[str],
+        columns: list[str],
         verbose: bool = False,
     ) -> pd.DataFrame:
         """
